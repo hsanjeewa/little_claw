@@ -4,10 +4,11 @@ This repository contains a DevOps Agent implemented in Go using Clean Architectu
 
 ## Build and Run
 
-- **Build**: `CGO_ENABLED=1 go build -o agent ./cmd/agent/main.go` (CGO is required for `go-sqlite3`).
+- **Build**: `CGO_ENABLED=0 go build -o agent ./cmd/agent/main.go`
 - **Run**: `go run cmd/agent/main.go`
-- **Database**: SQLite database is automatically created at `./agent.db`.
+- **Database**: SQLite database is automatically created at `./agent.db`. It uses `modernc.org/sqlite`, a pure Go SQLite driver, so CGO is **not** required.
 - **Docker**: A multi-stage Dockerfile is provided. Build with `docker build -t devops-agent .`.
+- **Just**: A `Justfile` is provided for common commands (e.g., `just build`, `just run`).
 
 ## Architecture & Code Boundaries
 
