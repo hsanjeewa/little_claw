@@ -4,7 +4,9 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/charmbracelet/bubbles/viewport"
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/charmbracelet/lipgloss"
 
 	"github.com/devops/agent/internal/domain/agent"
 )
@@ -17,13 +19,8 @@ type LogReceivedMsg struct {
 	Log agent.ExecutionLog
 }
 
-type HitlRequest struct {
-	Task         agent.Task
-	ResponseChan chan bool
-}
-
 type HitlRequestMsg struct {
-	Request HitlRequest
+	Request agent.HitlRequest
 }
 
 type Model struct {
@@ -32,13 +29,49 @@ type Model struct {
 	cursor     int
 	taskChan   chan agent.Task
 	logChan    chan agent.ExecutionLog
-	hitlChan   chan HitlRequest
-	activeHitl *HitlRequest
+	hitlChan   chan agent.HitlRequest
+	activeHitl *agent.HitlRequest
 	width      int
 	height     int
+	ready      bool
+	viewport   viewport.Model
 }
 
-func NewModel(taskChan chan agent.Task, logChan chan agent.ExecutionLog, hitlChan chan HitlRequest, initialTasks []agent.Task) Model {
+var (
+	titleStyle = lipgloss.NewStyle().
+		Bold(true).
+		Foreground(lipgloss.Color("#FAFAFA")).
+		Background(lipgloss.Color("#7D56F4")).
+		Padding(0, 1)
+
+	headerStyle = lipgloss.NewStyle().
+		BorderStyle(lipgloss.NormalBorder()).
+		BorderBottom(true).
+		BorderForeground(lipgloss.Color("#383838")).
+		Width(100)
+
+	panelStyle = lipgloss.NewStyle().
+		BorderStyle(lipgloss.NormalBorder()).
+		BorderForeground(lipgloss.Color("#383838")).
+		Padding(1)
+
+	activePanelStyle = lipgloss.NewStyle().
+		BorderStyle(lipgloss.NormalBorder()).
+		BorderForeground(lipgloss.Color("#7D56F4")).
+		Padding(1)
+
+	hitlStyle = lipgloss.NewStyle().
+		BorderStyle(lipgloss.ThickBorder()).
+		BorderForeground(lipgloss.Color("#F5A623")).
+		Foreground(lipgloss.Color("#F5A623")).
+		Padding(1)
+
+	statusOkStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("#04B575"))
+	statusFailStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("#FF3333"))
+	statusWaitStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("#F5A623"))
+)
+
+func NewModel(taskChan chan agent.Task, logChan chan agent.ExecutionLog, hitlChan chan agent.HitlRequest, initialTasks []agent.Task) Model {
 	return Model{
 		tasks:    initialTasks,
 		logs:     make([]agent.ExecutionLog, 0),
@@ -55,16 +88,6 @@ func (m Model) Init() tea.Cmd {
 		listenForLog(m.logChan),
 		listenForHitl(m.hitlChan),
 	)
-}
-
-func listenForHitl(sub chan HitlRequest) tea.Cmd {
-	return func() tea.Msg {
-		req, ok := <-sub
-		if !ok {
-			return nil
-		}
-		return HitlRequestMsg{Request: req}
-	}
 }
 
 func listenForTask(sub chan agent.Task) tea.Cmd {
@@ -87,7 +110,22 @@ func listenForLog(sub chan agent.ExecutionLog) tea.Cmd {
 	}
 }
 
+func listenForHitl(sub chan agent.HitlRequest) tea.Cmd {
+	return func() tea.Msg {
+		req, ok := <-sub
+		if !ok {
+			return nil
+		}
+		return HitlRequestMsg{Request: req}
+	}
+}
+
 func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+	var (
+		cmd  tea.Cmd
+		cmds []tea.Cmd
+	)
+
 	switch msg := msg.(type) {
 	case tea.KeyMsg:
 		if m.activeHitl != nil {
@@ -110,16 +148,38 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case "up", "k":
 			if m.cursor > 0 {
 				m.cursor--
+				m.updateViewportContent()
 			}
 		case "down", "j":
 			if m.cursor < len(m.tasks)-1 {
 				m.cursor++
+				m.updateViewportContent()
 			}
 		}
 
 	case tea.WindowSizeMsg:
 		m.width = msg.Width
 		m.height = msg.Height
+		headerHeight := 4
+		footerHeight := 3
+		listHeight := len(m.tasks) + 2
+		if m.activeHitl != nil {
+			footerHeight = 6
+		}
+
+		viewportHeight := m.height - headerHeight - footerHeight - listHeight
+		if viewportHeight < 0 {
+			viewportHeight = 0
+		}
+
+		if !m.ready {
+			m.viewport = viewport.New(m.width-4, viewportHeight)
+			m.ready = true
+			m.updateViewportContent()
+		} else {
+			m.viewport.Width = m.width - 4
+			m.viewport.Height = viewportHeight
+		}
 
 	case HitlRequestMsg:
 		m.activeHitl = &msg.Request
@@ -132,6 +192,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				break
 			}
 		}
+		m.updateViewportContent()
 		return m, listenForTask(m.taskChan)
 
 	case LogReceivedMsg:
@@ -139,109 +200,96 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if len(m.logs) > 100 {
 			m.logs = m.logs[:100]
 		}
+		m.updateViewportContent()
 		return m, listenForLog(m.logChan)
 	}
 
-	return m, nil
+	m.viewport, cmd = m.viewport.Update(msg)
+	cmds = append(cmds, cmd)
+
+	return m, tea.Batch(cmds...)
+}
+
+func (m *Model) updateViewportContent() {
+	if len(m.tasks) == 0 {
+		return
+	}
+	
+	currentTask := m.tasks[m.cursor]
+	
+	var content strings.Builder
+	content.WriteString(fmt.Sprintf("Command: %s\n", currentTask.Command))
+	content.WriteString(fmt.Sprintf("Status: %s\n\n", currentTask.Status))
+	
+	foundLog := false
+	for _, l := range m.logs {
+		if l.Command == currentTask.Command && l.Host == currentTask.HostIP {
+			content.WriteString(l.Output)
+			foundLog = true
+			break
+		}
+	}
+	
+	if !foundLog {
+		content.WriteString("Awaiting execution output...")
+	}
+	
+	m.viewport.SetContent(content.String())
 }
 
 func (m Model) View() string {
-	if m.width == 0 || m.height == 0 {
-		return "Initializing..."
+	if !m.ready {
+		return "\n  Initializing..."
 	}
 
-	leftPanelWidth := m.width / 2
-	rightPanelWidth := m.width - leftPanelWidth
+	okCount, failCount, waitCount, changedCount := 0, 0, 0, 0
+	for _, t := range m.tasks {
+		switch t.Status {
+		case agent.StatusSuccess, agent.StatusIdempotent:
+			okCount++
+		case agent.StatusFailed:
+			failCount++
+		case "WAITING":
+			waitCount++
+		case agent.StatusChanged:
+			changedCount++
+		}
+	}
 
-	var statusBar string
-	var panelHeight int
+	headerText := fmt.Sprintf("🤖 DevOps Agent | 🟢 Status: Active\n📊 Recap: %d Ok | %d Changed | %d Failed | %d Waiting", okCount, changedCount, failCount, waitCount)
+	header := headerStyle.Render(headerText)
+
+	var taskList strings.Builder
+	for i, t := range m.tasks {
+		cursor := " "
+		if m.cursor == i {
+			cursor = ">"
+		}
+		
+		statusStr := string(t.Status)
+		switch t.Status {
+		case agent.StatusSuccess, agent.StatusIdempotent:
+			statusStr = statusOkStyle.Render(statusStr)
+		case agent.StatusFailed:
+			statusStr = statusFailStyle.Render(statusStr)
+		case "WAITING", agent.StatusRunning:
+			statusStr = statusWaitStyle.Render(statusStr)
+		}
+		
+		taskList.WriteString(fmt.Sprintf("%s [%s] %s: %s\n", cursor, statusStr, t.HostAlias, t.Command))
+	}
+	
+	leftPanel := activePanelStyle.Width(m.width - 4).Render(taskList.String())
+	
+	vp := panelStyle.Width(m.width - 4).Render("AI ROOT CAUSE ANALYSIS & LOGS\n\n" + m.viewport.View())
+	
+	var footer string
 	if m.activeHitl != nil {
-		statusBar = fmt.Sprintf("⚠️  [HITL GATE] Review target [%s] -> Command: %s\nApprove Execution? (y/N): ", m.activeHitl.Task.HostAlias, m.activeHitl.Task.Command)
-		panelHeight = m.height - 3
+		hitlPrompt := fmt.Sprintf("⚠️  [HITL GATE] Target [%s] -> Command: %s\nApprove Execution? (y/N): ", m.activeHitl.Task.HostAlias, m.activeHitl.Task.Command)
+		footer = hitlStyle.Width(m.width - 4).Render(hitlPrompt)
 	} else {
-		statusBar = "  j/k: navigate, q: quit"
-		panelHeight = m.height - 2
+		footer = lipgloss.NewStyle().Foreground(lipgloss.Color("#777777")).Padding(1).Render("↑/↓: scroll output | j/k: navigate list | q: quit")
 	}
 
-	leftPanel := renderTaskList(m.tasks, m.cursor, leftPanelWidth, panelHeight)
-	rightPanel := renderLogList(m.logs, rightPanelWidth, panelHeight)
-
-	splitViews := sideBySide(leftPanel, rightPanel)
-	
-	return fmt.Sprintf("%s\n%s", splitViews, statusBar)
-}
-
-func renderTaskList(tasks []agent.Task, cursor int, width, height int) string {
-	var b strings.Builder
-	b.WriteString(fmt.Sprintf("%-*s\n", width, "--- TASKS ---"))
-	
-	lines := 1
-	for i, t := range tasks {
-		if lines >= height {
-			break
-		}
-		
-		cursorChar := " "
-		if cursor == i {
-			cursorChar = ">"
-		}
-		
-		line := fmt.Sprintf("%s [%s] %s: %s", cursorChar, t.Status, t.HostAlias, t.Command)
-		if len(line) > width {
-			line = line[:width-3] + "..."
-		}
-		
-		b.WriteString(fmt.Sprintf("%-*s\n", width, line))
-		lines++
-	}
-	
-	for lines < height {
-		b.WriteString(fmt.Sprintf("%-*s\n", width, ""))
-		lines++
-	}
-	
-	return b.String()
-}
-
-func renderLogList(logs []agent.ExecutionLog, width, height int) string {
-	var b strings.Builder
-	b.WriteString(fmt.Sprintf("%-*s\n", width, "--- RECENT LOGS ---"))
-	
-	lines := 1
-	for _, l := range logs {
-		if lines >= height {
-			break
-		}
-		
-		timeStr := l.Timestamp.Format("15:04:05")
-		line := fmt.Sprintf("[%s] %s - %s: %s", timeStr, l.Host, l.Status, l.Command)
-		if len(line) > width {
-			line = line[:width-3] + "..."
-		}
-		
-		b.WriteString(fmt.Sprintf("%-*s\n", width, line))
-		lines++
-	}
-	
-	for lines < height {
-		b.WriteString(fmt.Sprintf("%-*s\n", width, ""))
-		lines++
-	}
-	
-	return b.String()
-}
-
-func sideBySide(left, right string) string {
-	leftLines := strings.Split(left, "\n")
-	rightLines := strings.Split(right, "\n")
-	
-	var b strings.Builder
-	for i := 0; i < len(leftLines) && i < len(rightLines); i++ {
-		b.WriteString(leftLines[i])
-		b.WriteString(rightLines[i])
-		if i < len(leftLines)-1 {
-			b.WriteString("\n")
-		}
-	}
-	return b.String()
+	return fmt.Sprintf("%s\n%s\n%s\n%s", header, leftPanel, vp, footer)
 }

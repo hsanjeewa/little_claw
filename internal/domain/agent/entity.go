@@ -82,6 +82,11 @@ type AIAnalyzer interface {
 	PlanTasks(ctx context.Context, goal string) ([]Task, error)
 }
 
+type HitlRequest struct {
+	Task         Task
+	ResponseChan chan bool
+}
+
 type AuditRepository interface {
 	SaveLog(ctx context.Context, log ExecutionLog) error
 	GetLogs(ctx context.Context, host string) ([]ExecutionLog, error)
