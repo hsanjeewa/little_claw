@@ -13,6 +13,9 @@ import (
 
 	"github.com/devops/agent/internal/domain/agent"
 	"github.com/devops/agent/internal/infrastructure/database"
+	"github.com/devops/agent/internal/infrastructure/llm"
+	"github.com/devops/agent/internal/infrastructure/notification"
+	"github.com/devops/agent/internal/infrastructure/security"
 	"github.com/devops/agent/internal/ui/tui"
 )
 
@@ -32,9 +35,11 @@ func main() {
 
 	tasks := []agent.Task{task1, task2, task3}
 
+	analyzer := llm.NewLocalOpenAIClient("http://localhost:11434/v1", "qwen2.5-coder")
+
 	model := tui.NewModel(taskChan, logChan, tasks)
 
-	go simulateExecution(tasks, repo, taskChan, logChan)
+	go simulateExecution(tasks, repo, analyzer, taskChan, logChan)
 
 	p := tea.NewProgram(model, tea.WithAltScreen())
 	if _, err := p.Run(); err != nil {
@@ -43,7 +48,7 @@ func main() {
 	}
 }
 
-func simulateExecution(tasks []agent.Task, repo agent.AuditRepository, taskChan chan agent.Task, logChan chan agent.ExecutionLog) {
+func simulateExecution(tasks []agent.Task, repo agent.AuditRepository, analyzer agent.AIAnalyzer, taskChan chan agent.Task, logChan chan agent.ExecutionLog) {
 	for {
 		for i := range tasks {
 			t := tasks[i]
@@ -62,13 +67,19 @@ func simulateExecution(tasks []agent.Task, repo agent.AuditRepository, taskChan 
 			}
 			taskChan <- t
 			
+			rawOutput := fmt.Sprintf("Simulated output for %s", t.Command)
+			aiAnalysis, err := analyzer.AnalyzeOutput(context.Background(), t.Command, rawOutput)
+			if err != nil {
+				aiAnalysis = fmt.Sprintf("AI Analysis Failed: %v", err)
+			}
+			
 			execLog := agent.ExecutionLog{
 				ID:        uuid.New().String(),
 				Timestamp: time.Now(),
 				Host:      t.HostIP,
 				Command:   t.Command,
 				Status:    t.Status,
-				Output:    fmt.Sprintf("Simulated output for %s", t.Command),
+				Output:    fmt.Sprintf("%s\n\n[AI ANALYSIS]\n%s", rawOutput, aiAnalysis),
 			}
 			
 			err := repo.SaveLog(context.Background(), execLog)

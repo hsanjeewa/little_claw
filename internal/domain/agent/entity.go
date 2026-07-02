@@ -65,11 +65,21 @@ type ExecutionLog struct {
 }
 
 type SecretVault interface {
-	GetPassword(host string) (string, error)
+	GetPrivateKey(hostAlias string) (string, error)
+	GetSudoPassword(hostAlias string) (string, error)
 }
 
 type NotificationSink interface {
-	Notify(ctx context.Context, msg string) error
+	Emit(ctx context.Context, topic string, payload map[string]interface{}) error
+}
+
+type IdempotencyHelper interface {
+	IsSatisfied(ctx context.Context, task Task) (bool, string)
+}
+
+type AIAnalyzer interface {
+	AnalyzeOutput(ctx context.Context, command string, output string) (string, error)
+	PlanTasks(ctx context.Context, goal string) ([]Task, error)
 }
 
 type AuditRepository interface {

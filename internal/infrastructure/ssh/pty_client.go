@@ -24,18 +24,23 @@ func NewSSHClient(vault agent.SecretVault) *SSHClient {
 }
 
 func (c *SSHClient) Execute(ctx context.Context, task agent.Task) (string, error) {
-	connPass, err := c.vault.GetPassword(task.HostIP)
+	keyData, err := c.vault.GetPrivateKey(task.HostAlias)
 	if err != nil {
-		return "", fmt.Errorf("context: %w", fmt.Errorf("failed to get connection password: %v", err))
+		return "", fmt.Errorf("context: %w", fmt.Errorf("failed to get private key: %v", err))
+	}
+
+	signer, err := ssh.ParsePrivateKey([]byte(keyData))
+	if err != nil {
+		return "", fmt.Errorf("context: %w", fmt.Errorf("failed to parse private key: %v", err))
 	}
 
 	config := &ssh.ClientConfig{
 		User: task.User,
 		Auth: []ssh.AuthMethod{
-			ssh.Password(connPass),
+			ssh.PublicKeys(signer),
 		},
 		HostKeyCallback: ssh.InsecureIgnoreHostKey(),
-		Timeout:         5 * time.Second,
+		Timeout:         10 * time.Second,
 	}
 
 	addr := fmt.Sprintf("%s:%d", task.HostIP, task.Port)
@@ -106,7 +111,7 @@ func (c *SSHClient) Execute(ctx context.Context, task agent.Task) (string, error
 
 				chunkStr := strings.ToLower(string(chunk))
 				if strings.Contains(chunkStr, "password") || strings.Contains(chunkStr, "[sudo]") {
-					sudoPass, err := c.vault.GetPassword(task.HostIP)
+					sudoPass, err := c.vault.GetSudoPassword(task.HostAlias)
 					if err == nil {
 						_, _ = stdin.Write([]byte(sudoPass + "\n"))
 					}
