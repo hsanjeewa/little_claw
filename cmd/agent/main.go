@@ -15,8 +15,6 @@ import (
 	"github.com/devops/agent/internal/domain/agent"
 	"github.com/devops/agent/internal/infrastructure/database"
 	"github.com/devops/agent/internal/infrastructure/llm"
-	"github.com/devops/agent/internal/infrastructure/notification"
-	"github.com/devops/agent/internal/infrastructure/security"
 	"github.com/devops/agent/internal/ui/tui"
 )
 
@@ -25,6 +23,7 @@ func main() {
 
 	taskChan := make(chan agent.Task, 10)
 	logChan := make(chan agent.ExecutionLog, 10)
+	hitlChan := make(chan tui.HitlRequest, 10)
 
 	dbPath := "./agent.db"
 	repo, err := database.NewSQLiteRepository(dbPath)
@@ -51,9 +50,9 @@ func main() {
 
 	analyzer := llm.NewLocalOpenAIClient(baseURL, apiKey, modelName)
 
-	model := tui.NewModel(taskChan, logChan, tasks)
+	model := tui.NewModel(taskChan, logChan, hitlChan, tasks)
 
-	go simulateExecution(tasks, repo, analyzer, taskChan, logChan)
+	go simulateExecution(tasks, repo, analyzer, taskChan, logChan, hitlChan)
 
 	p := tea.NewProgram(model, tea.WithAltScreen())
 	if _, err := p.Run(); err != nil {
@@ -62,13 +61,39 @@ func main() {
 	}
 }
 
-func simulateExecution(tasks []agent.Task, repo agent.AuditRepository, analyzer agent.AIAnalyzer, taskChan chan agent.Task, logChan chan agent.ExecutionLog) {
+func simulateExecution(tasks []agent.Task, repo agent.AuditRepository, analyzer agent.AIAnalyzer, taskChan chan agent.Task, logChan chan agent.ExecutionLog, hitlChan chan tui.HitlRequest) {
 	for {
 		for i := range tasks {
 			t := tasks[i]
 			
 			time.Sleep(2 * time.Second)
 			
+			if t.IsMutative {
+				t.Status = "WAITING"
+				taskChan <- t
+
+				respChan := make(chan bool)
+				hitlChan <- tui.HitlRequest{Task: t, ResponseChan: respChan}
+				approved := <-respChan
+
+				if !approved {
+					t.Status = agent.StatusSkipped
+					taskChan <- t
+					
+					execLog := agent.ExecutionLog{
+						ID:        uuid.New().String(),
+						Timestamp: time.Now(),
+						Host:      t.HostIP,
+						Command:   t.Command,
+						Status:    t.Status,
+						Output:    "Operator Denied Authorization",
+					}
+					_ = repo.SaveLog(context.Background(), execLog)
+					logChan <- execLog
+					continue
+				}
+			}
+
 			t.Status = agent.StatusRunning
 			taskChan <- t
 			
@@ -96,10 +121,9 @@ func simulateExecution(tasks []agent.Task, repo agent.AuditRepository, analyzer 
 				Output:    fmt.Sprintf("%s\n\n[AI ANALYSIS]\n%s", rawOutput, aiAnalysis),
 			}
 			
-			err := repo.SaveLog(context.Background(), execLog)
-			if err != nil {
-				_ = err
-			}
+				if err := repo.SaveLog(context.Background(), execLog); err != nil {
+					_ = err
+				}
 			
 			logChan <- execLog
 		}

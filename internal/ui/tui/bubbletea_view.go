@@ -17,23 +17,35 @@ type LogReceivedMsg struct {
 	Log agent.ExecutionLog
 }
 
-type Model struct {
-	tasks    []agent.Task
-	logs     []agent.ExecutionLog
-	cursor   int
-	taskChan chan agent.Task
-	logChan  chan agent.ExecutionLog
-	width    int
-	height   int
+type HitlRequest struct {
+	Task         agent.Task
+	ResponseChan chan bool
 }
 
-func NewModel(taskChan chan agent.Task, logChan chan agent.ExecutionLog, initialTasks []agent.Task) Model {
+type HitlRequestMsg struct {
+	Request HitlRequest
+}
+
+type Model struct {
+	tasks      []agent.Task
+	logs       []agent.ExecutionLog
+	cursor     int
+	taskChan   chan agent.Task
+	logChan    chan agent.ExecutionLog
+	hitlChan   chan HitlRequest
+	activeHitl *HitlRequest
+	width      int
+	height     int
+}
+
+func NewModel(taskChan chan agent.Task, logChan chan agent.ExecutionLog, hitlChan chan HitlRequest, initialTasks []agent.Task) Model {
 	return Model{
 		tasks:    initialTasks,
 		logs:     make([]agent.ExecutionLog, 0),
 		cursor:   0,
 		taskChan: taskChan,
 		logChan:  logChan,
+		hitlChan: hitlChan,
 	}
 }
 
@@ -41,7 +53,18 @@ func (m Model) Init() tea.Cmd {
 	return tea.Batch(
 		listenForTask(m.taskChan),
 		listenForLog(m.logChan),
+		listenForHitl(m.hitlChan),
 	)
+}
+
+func listenForHitl(sub chan HitlRequest) tea.Cmd {
+	return func() tea.Msg {
+		req, ok := <-sub
+		if !ok {
+			return nil
+		}
+		return HitlRequestMsg{Request: req}
+	}
 }
 
 func listenForTask(sub chan agent.Task) tea.Cmd {
@@ -67,6 +90,20 @@ func listenForLog(sub chan agent.ExecutionLog) tea.Cmd {
 func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case tea.KeyMsg:
+		if m.activeHitl != nil {
+			switch msg.String() {
+			case "y", "Y":
+				m.activeHitl.ResponseChan <- true
+				m.activeHitl = nil
+			case "n", "N":
+				m.activeHitl.ResponseChan <- false
+				m.activeHitl = nil
+			case "ctrl+c":
+				return m, tea.Quit
+			}
+			return m, nil
+		}
+
 		switch msg.String() {
 		case "ctrl+c", "q":
 			return m, tea.Quit
@@ -83,6 +120,10 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tea.WindowSizeMsg:
 		m.width = msg.Width
 		m.height = msg.Height
+
+	case HitlRequestMsg:
+		m.activeHitl = &msg.Request
+		return m, listenForHitl(m.hitlChan)
 
 	case TaskUpdatedMsg:
 		for i, t := range m.tasks {
@@ -112,14 +153,20 @@ func (m Model) View() string {
 	leftPanelWidth := m.width / 2
 	rightPanelWidth := m.width - leftPanelWidth
 
-	panelHeight := m.height - 2 
+	var statusBar string
+	var panelHeight int
+	if m.activeHitl != nil {
+		statusBar = fmt.Sprintf("⚠️  [HITL GATE] Review target [%s] -> Command: %s\nApprove Execution? (y/N): ", m.activeHitl.Task.HostAlias, m.activeHitl.Task.Command)
+		panelHeight = m.height - 3
+	} else {
+		statusBar = "  j/k: navigate, q: quit"
+		panelHeight = m.height - 2
+	}
 
 	leftPanel := renderTaskList(m.tasks, m.cursor, leftPanelWidth, panelHeight)
 	rightPanel := renderLogList(m.logs, rightPanelWidth, panelHeight)
 
 	splitViews := sideBySide(leftPanel, rightPanel)
-	
-	statusBar := "  j/k: navigate, q: quit"
 	
 	return fmt.Sprintf("%s\n%s", splitViews, statusBar)
 }
