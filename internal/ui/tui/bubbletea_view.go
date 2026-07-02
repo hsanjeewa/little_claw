@@ -160,25 +160,28 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tea.WindowSizeMsg:
 		m.width = msg.Width
 		m.height = msg.Height
-		headerHeight := 4
+		
+		headerHeight := lipgloss.Height(headerStyle.Render("Dummy\nDummy"))
 		footerHeight := 3
-		listHeight := len(m.tasks) + 2
 		if m.activeHitl != nil {
 			footerHeight = 6
 		}
 
-		viewportHeight := m.height - headerHeight - footerHeight - listHeight
-		if viewportHeight < 0 {
-			viewportHeight = 0
+		mainPanelHeight := m.height - headerHeight - footerHeight
+		if mainPanelHeight < 0 {
+			mainPanelHeight = 0
 		}
 
+		leftWidth := (m.width / 3) - 2
+		rightWidth := m.width - leftWidth - 6
+
 		if !m.ready {
-			m.viewport = viewport.New(m.width-4, viewportHeight)
+			m.viewport = viewport.New(rightWidth, mainPanelHeight-2)
 			m.ready = true
 			m.updateViewportContent()
 		} else {
-			m.viewport.Width = m.width - 4
-			m.viewport.Height = viewportHeight
+			m.viewport.Width = rightWidth
+			m.viewport.Height = mainPanelHeight - 2
 		}
 
 	case HitlRequestMsg:
@@ -257,10 +260,24 @@ func (m Model) View() string {
 	}
 
 	headerText := fmt.Sprintf("🤖 DevOps Agent | 🟢 Status: Active\n📊 Recap: %d Ok | %d Changed | %d Failed | %d Waiting", okCount, changedCount, failCount, waitCount)
-	header := headerStyle.Render(headerText)
+	header := headerStyle.Width(m.width).Render(headerText)
+
+	leftWidth := (m.width / 3) - 2
+	rightWidth := m.width - leftWidth - 6
+	mainPanelHeight := m.height - lipgloss.Height(header) - 3
+	if m.activeHitl != nil {
+		mainPanelHeight = m.height - lipgloss.Height(header) - 6
+	}
+	if mainPanelHeight < 0 {
+		mainPanelHeight = 0
+	}
 
 	var taskList strings.Builder
 	for i, t := range m.tasks {
+		if i >= mainPanelHeight-2 {
+			break
+		}
+		
 		cursor := " "
 		if m.cursor == i {
 			cursor = ">"
@@ -276,20 +293,25 @@ func (m Model) View() string {
 			statusStr = statusWaitStyle.Render(statusStr)
 		}
 		
-		taskList.WriteString(fmt.Sprintf("%s [%s] %s: %s\n", cursor, statusStr, t.HostAlias, t.Command))
+		line := fmt.Sprintf("%s [%s] %s: %s", cursor, statusStr, t.HostAlias, t.Command)
+		cleanLine := lipgloss.NewStyle().Width(leftWidth - 4).Render(line)
+		taskList.WriteString(cleanLine + "\n")
 	}
 	
-	leftPanel := activePanelStyle.Width(m.width - 4).Render(taskList.String())
+	leftPanel := activePanelStyle.Width(leftWidth).Height(mainPanelHeight).Render(taskList.String())
+	vp := panelStyle.Width(rightWidth).Height(mainPanelHeight).Render(
+		lipgloss.NewStyle().Bold(true).Render("AI ROOT CAUSE ANALYSIS & LOGS") + "\n\n" + m.viewport.View(),
+	)
 	
-	vp := panelStyle.Width(m.width - 4).Render("AI ROOT CAUSE ANALYSIS & LOGS\n\n" + m.viewport.View())
-	
+	mainArea := lipgloss.JoinHorizontal(lipgloss.Top, leftPanel, vp)
+
 	var footer string
 	if m.activeHitl != nil {
 		hitlPrompt := fmt.Sprintf("⚠️  [HITL GATE] Target [%s] -> Command: %s\nApprove Execution? (y/N): ", m.activeHitl.Task.HostAlias, m.activeHitl.Task.Command)
-		footer = hitlStyle.Width(m.width - 4).Render(hitlPrompt)
+		footer = hitlStyle.Width(m.width - 2).Render(hitlPrompt)
 	} else {
 		footer = lipgloss.NewStyle().Foreground(lipgloss.Color("#777777")).Padding(1).Render("↑/↓: scroll output | j/k: navigate list | q: quit")
 	}
 
-	return fmt.Sprintf("%s\n%s\n%s\n%s", header, leftPanel, vp, footer)
+	return lipgloss.JoinVertical(lipgloss.Left, header, mainArea, footer)
 }
