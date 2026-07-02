@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"strconv"
 	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
@@ -43,6 +44,22 @@ func main() {
 		modelName = "qwen/qwen-2.5-coder-32b-instruct"
 	}
 
+	sshTimeoutSecs := 30
+	if val := os.Getenv("SSH_TIMEOUT_SECONDS"); val != "" {
+		if parsed, err := strconv.Atoi(val); err == nil {
+			sshTimeoutSecs = parsed
+		}
+	}
+	sshTimeout := time.Duration(sshTimeoutSecs) * time.Second
+
+	llmTimeoutSecs := 15
+	if val := os.Getenv("LLM_TIMEOUT_SECONDS"); val != "" {
+		if parsed, err := strconv.Atoi(val); err == nil {
+			llmTimeoutSecs = parsed
+		}
+	}
+	llmTimeout := time.Duration(llmTimeoutSecs) * time.Second
+
 	analyzer := llm.NewLocalOpenAIClient(baseURL, apiKey, modelName)
 	
 	masterSecret := []byte("a-very-secret-key-32-bytes-long!!")
@@ -51,7 +68,7 @@ func main() {
 	sshClient := ssh.NewSSHClient(vault)
 	idempHelper := ssh.NewLinuxIdempotencyAnalyzer(sshClient)
 	
-	engine := agent.NewEngine(sshClient, repo, analyzer, idempHelper, taskChan, logChan)
+	engine := agent.NewEngine(sshClient, repo, analyzer, idempHelper, taskChan, logChan, sshTimeout, llmTimeout)
 
 	task1, _ := agent.NewTask(uuid.New().String(), "local-web", "127.0.0.1", 2222, "root", "uptime", false)
 	task2, _ := agent.NewTask(uuid.New().String(), "local-db", "127.0.0.1", 2222, "root", "df -h", false)

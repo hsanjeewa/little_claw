@@ -28,7 +28,11 @@ The project strictly follows Clean Architecture:
 - **TUI Constraints**: Do not use standard `log.Print` or `fmt.Println` to `stdout`/`stderr` inside goroutines or handlers when the TUI is running, as it will corrupt the Bubble Tea interface. Route logs to a file or use the provided `logChan` to render logs inside the TUI.
 - **SSH Client**: SSH execution runs in a pseudo-terminal (`vt100`). Always close SSH sessions and connections explicitly using `defer` blocks.
 
-## Testing
+## Configuration & Environment Variables
 
-- Standard Go testing applies: `go test ./...`
-- Mock domain interfaces in `internal/domain` when testing infrastructure or UI layers.
+The agent reads configuration from a `.env` file at the root. Example variables:
+- `OPENAI_BASE_URL`: API Endpoint (e.g., `https://openrouter.ai/api/v1` or `http://localhost:11434/v1`).
+- `OPENAI_API_KEY`: API authentication key.
+- `LLM_MODEL`: Target model (e.g., `qwen/qwen-2.5-coder-32b-instruct`).
+- `SSH_TIMEOUT_SECONDS`: Graceful timeout for network/SSH failures (default: 30).
+- `LLM_TIMEOUT_SECONDS`: Graceful timeout for AI inference calls (default: 15).

@@ -161,27 +161,37 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.width = msg.Width
 		m.height = msg.Height
 		
-		headerHeight := lipgloss.Height(headerStyle.Render("Dummy\nDummy"))
-		footerHeight := 3
+		headerHeight := 3 
+		footerHeight := 3 
 		if m.activeHitl != nil {
-			footerHeight = 6
+			footerHeight = 6 
 		}
 
-		mainPanelHeight := m.height - headerHeight - footerHeight
-		if mainPanelHeight < 0 {
-			mainPanelHeight = 0
+		mainAreaHeight := m.height - headerHeight - footerHeight
+		if mainAreaHeight < 0 {
+			mainAreaHeight = 0
+		}
+
+		innerPanelHeight := mainAreaHeight - 4
+		if innerPanelHeight < 0 {
+			innerPanelHeight = 0
 		}
 
 		leftWidth := (m.width / 3) - 2
-		rightWidth := m.width - leftWidth - 6
+		rightWidth := m.width - leftWidth - 2 
+
+		viewportHeight := innerPanelHeight - 2
+		if viewportHeight < 0 {
+			viewportHeight = 0
+		}
 
 		if !m.ready {
-			m.viewport = viewport.New(rightWidth, mainPanelHeight-2)
+			m.viewport = viewport.New(rightWidth-4, viewportHeight)
 			m.ready = true
 			m.updateViewportContent()
 		} else {
-			m.viewport.Width = rightWidth
-			m.viewport.Height = mainPanelHeight - 2
+			m.viewport.Width = rightWidth - 4
+			m.viewport.Height = viewportHeight
 		}
 
 	case HitlRequestMsg:
@@ -262,19 +272,26 @@ func (m Model) View() string {
 	headerText := fmt.Sprintf("🤖 DevOps Agent | 🟢 Status: Active\n📊 Recap: %d Ok | %d Changed | %d Failed | %d Waiting", okCount, changedCount, failCount, waitCount)
 	header := headerStyle.Width(m.width).Render(headerText)
 
-	leftWidth := (m.width / 3) - 2
-	rightWidth := m.width - leftWidth - 6
-	mainPanelHeight := m.height - lipgloss.Height(header) - 3
+	headerHeight := 3 
+	footerHeight := 3 
 	if m.activeHitl != nil {
-		mainPanelHeight = m.height - lipgloss.Height(header) - 6
+		footerHeight = 6 
 	}
-	if mainPanelHeight < 0 {
-		mainPanelHeight = 0
+	mainAreaHeight := m.height - headerHeight - footerHeight
+	if mainAreaHeight < 0 {
+		mainAreaHeight = 0
 	}
+	innerPanelHeight := mainAreaHeight - 4
+	if innerPanelHeight < 0 {
+		innerPanelHeight = 0
+	}
+
+	leftWidth := (m.width / 3) - 2
+	rightWidth := m.width - leftWidth - 2
 
 	var taskList strings.Builder
 	for i, t := range m.tasks {
-		if i >= mainPanelHeight-2 {
+		if i >= innerPanelHeight {
 			break
 		}
 		
@@ -298,8 +315,8 @@ func (m Model) View() string {
 		taskList.WriteString(cleanLine + "\n")
 	}
 	
-	leftPanel := activePanelStyle.Width(leftWidth).Height(mainPanelHeight).Render(taskList.String())
-	vp := panelStyle.Width(rightWidth).Height(mainPanelHeight).Render(
+	leftPanel := activePanelStyle.Width(leftWidth).Height(mainAreaHeight - 2).Render(taskList.String())
+	vp := panelStyle.Width(rightWidth).Height(mainAreaHeight - 2).Render(
 		lipgloss.NewStyle().Bold(true).Render("AI ROOT CAUSE ANALYSIS & LOGS") + "\n\n" + m.viewport.View(),
 	)
 	

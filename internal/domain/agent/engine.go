@@ -11,12 +11,14 @@ type CommandExecutor interface {
 }
 
 type Engine struct {
-	executor  CommandExecutor
-	repo      AuditRepository
-	analyzer  AIAnalyzer
-	idemp     IdempotencyHelper
-	taskChan  chan<- Task
-	logChan   chan<- ExecutionLog
+	executor    CommandExecutor
+	repo        AuditRepository
+	analyzer    AIAnalyzer
+	idemp       IdempotencyHelper
+	taskChan    chan<- Task
+	logChan     chan<- ExecutionLog
+	sshTimeout  time.Duration
+	llmTimeout  time.Duration
 }
 
 func NewEngine(
@@ -26,14 +28,24 @@ func NewEngine(
 	idemp IdempotencyHelper,
 	taskChan chan<- Task,
 	logChan chan<- ExecutionLog,
+	sshTimeout time.Duration,
+	llmTimeout time.Duration,
 ) *Engine {
+	if sshTimeout == 0 {
+		sshTimeout = 30 * time.Second
+	}
+	if llmTimeout == 0 {
+		llmTimeout = 15 * time.Second
+	}
 	return &Engine{
-		executor:  executor,
-		repo:      repo,
-		analyzer:  analyzer,
-		idemp:     idemp,
-		taskChan:  taskChan,
-		logChan:   logChan,
+		executor:   executor,
+		repo:       repo,
+		analyzer:   analyzer,
+		idemp:      idemp,
+		taskChan:   taskChan,
+		logChan:    logChan,
+		sshTimeout: sshTimeout,
+		llmTimeout: llmTimeout,
 	}
 }
 
@@ -72,7 +84,7 @@ func (e *Engine) RunTask(ctx context.Context, task Task, hitlChan chan<- HitlReq
 	task.Status = StatusRunning
 	e.taskChan <- task
 
-	execCtx, cancel := context.WithTimeout(ctx, 30*time.Second)
+	execCtx, cancel := context.WithTimeout(ctx, e.sshTimeout)
 	defer cancel()
 
 	output, err := e.executor.Execute(execCtx, task)
@@ -86,7 +98,7 @@ func (e *Engine) RunTask(ctx context.Context, task Task, hitlChan chan<- HitlReq
 	}
 	e.taskChan <- task
 
-	aiCtx, aiCancel := context.WithTimeout(ctx, 15*time.Second)
+	aiCtx, aiCancel := context.WithTimeout(ctx, e.llmTimeout)
 	defer aiCancel()
 	
 	aiAnalysis, aiErr := e.analyzer.AnalyzeOutput(aiCtx, task.Command, output)
