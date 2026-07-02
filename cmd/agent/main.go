@@ -10,6 +10,7 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/google/uuid"
+	"github.com/joho/godotenv"
 
 	"github.com/devops/agent/internal/domain/agent"
 	"github.com/devops/agent/internal/infrastructure/database"
@@ -20,6 +21,8 @@ import (
 )
 
 func main() {
+	_ = godotenv.Load()
+
 	taskChan := make(chan agent.Task, 10)
 	logChan := make(chan agent.ExecutionLog, 10)
 
@@ -35,7 +38,18 @@ func main() {
 
 	tasks := []agent.Task{task1, task2, task3}
 
-	analyzer := llm.NewLocalOpenAIClient("http://localhost:11434/v1", "qwen2.5-coder")
+	baseURL := os.Getenv("OPENAI_BASE_URL")
+	apiKey := os.Getenv("OPENAI_API_KEY")
+	modelName := os.Getenv("LLM_MODEL")
+
+	if baseURL == "" {
+		baseURL = "https://openrouter.ai/api/v1"
+	}
+	if modelName == "" {
+		modelName = "qwen/qwen-2.5-coder-32b-instruct"
+	}
+
+	analyzer := llm.NewLocalOpenAIClient(baseURL, apiKey, modelName)
 
 	model := tui.NewModel(taskChan, logChan, tasks)
 

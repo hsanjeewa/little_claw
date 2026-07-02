@@ -5,6 +5,7 @@ go 1.26.4
 require (
 	github.com/charmbracelet/bubbletea v1.3.10
 	github.com/google/uuid v1.6.0
+	github.com/sashabaranov/go-openai v1.41.2
 	golang.org/x/crypto v0.53.0
 	modernc.org/sqlite v1.53.0
 )

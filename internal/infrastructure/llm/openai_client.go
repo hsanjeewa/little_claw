@@ -14,8 +14,8 @@ type LocalOpenAIClient struct {
 	model  string
 }
 
-func NewLocalOpenAIClient(baseURL, model string) *LocalOpenAIClient {
-	config := openai.DefaultConfig("sk-local-no-key-needed")
+func NewLocalOpenAIClient(baseURL, apiKey, model string) *LocalOpenAIClient {
+	config := openai.DefaultConfig(apiKey)
 	if baseURL != "" {
 		config.BaseURL = baseURL
 	}
