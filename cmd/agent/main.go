@@ -14,6 +14,7 @@ import (
 
 	"github.com/devops/agent/internal/domain/agent"
 	"github.com/devops/agent/internal/infrastructure/database"
+	"github.com/devops/agent/internal/infrastructure/inventory"
 	"github.com/devops/agent/internal/infrastructure/llm"
 	"github.com/devops/agent/internal/infrastructure/security"
 	"github.com/devops/agent/internal/infrastructure/ssh"
@@ -70,10 +71,23 @@ func main() {
 	
 	engine := agent.NewEngine(sshClient, repo, analyzer, idempHelper, taskChan, logChan, sshTimeout, llmTimeout)
 
-	task1, _ := agent.NewTask(uuid.New().String(), "local-web", "127.0.0.1", 2222, "root", "uptime", false)
-	task2, _ := agent.NewTask(uuid.New().String(), "local-db", "127.0.0.1", 2222, "root", "df -h", false)
-	task3, _ := agent.NewTask(uuid.New().String(), "local-cache", "127.0.0.1", 2222, "root", "sudo whoami", true)
-	tasks := []agent.Task{task1, task2, task3}
+	targets, err := inventory.LoadInventory("hosts.yaml")
+	if err != nil {
+		log.Fatalf("Failed to load inventory: %v", err)
+	}
+
+	var tasks []agent.Task
+	
+	for _, target := range targets {
+		if target.Alias == "db-master" {
+			t, _ := agent.NewTask(uuid.New().String(), target.Alias, target.IP, target.Port, target.User, "pg_dump data.sql", true)
+			tasks = append(tasks, t)
+		} else {
+			t1, _ := agent.NewTask(uuid.New().String(), target.Alias, target.IP, target.Port, target.User, "uptime", false)
+			t2, _ := agent.NewTask(uuid.New().String(), target.Alias, target.IP, target.Port, target.User, "sudo apt-get update", true)
+			tasks = append(tasks, t1, t2)
+		}
+	}
 
 	model := tui.NewModel(taskChan, logChan, hitlChan, tasks)
 
