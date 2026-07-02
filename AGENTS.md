@@ -122,3 +122,17 @@ just test
 ## CONFIGURATION
 The agent reads structural configuration from `config/config.toml` (timeouts, endpoints, inventory paths).
 Sensitive keys (like `OPENAI_API_KEY`) should remain in the `.env` file.
+
+## Agent skills
+
+### Issue tracker
+
+Issues are tracked in GitHub Issues for this repo, and external PRs are treated as a triage surface. See `docs/agents/issue-tracker.md`.
+
+### Triage labels
+
+The canonical triage labels use their default names: `needs-triage`, `needs-info`, `ready-for-agent`, `ready-for-human`, and `wontfix`. See `docs/agents/triage-labels.md`.
+
+### Domain docs
+
+Single-context layout: one `CONTEXT.md` and `docs/adr/` at the repo root. See `docs/agents/domain.md`.
