@@ -8,6 +8,18 @@ build:
 run: build
 	./agent
 
+# Start simulated test servers via Docker Compose
+up:
+	docker-compose up -d
+
+# Stop simulated test servers
+down:
+	docker-compose down
+
+# View logs for test servers
+logs:
+	docker-compose logs -f
+
 # Format code
 fmt:
 	go fmt ./...

@@ -17,21 +17,42 @@ This project solves that by doing the heavy lifting automatically:
 
 We made sure you don't need a Ph.D. in Computer Science to run this.
 
-### 1. Set up your environment
+### Step 0: Install Required Software
+Before you start, you will need a few standard developer tools installed on your computer. If you are on a Mac, the easiest way is to use [Homebrew](https://brew.sh/) (`brew`):
+
+1. **Go (Golang)**: The programming language this agent is built in.
+   - Mac: `brew install go`
+   - Windows/Linux: Download from [go.dev/dl](https://go.dev/dl/)
+2. **Just**: A handy command runner (like `make`, but simpler).
+   - Mac: `brew install just`
+   - Windows/Linux: Follow [Just Installation](https://github.com/casey/just?tab=readme-ov-file#installation)
+3. **Docker Desktop**: Used to spin up fake "test servers" safely on your laptop.
+   - Download from [docker.com/products/docker-desktop](https://www.docker.com/products/docker-desktop/)
+
+### Step 1: Set up your environment
 Ask your manager for the API Key. Once you have it, copy the example file:
 ```bash
 cp .env.example .env
 ```
 Open `.env` in any text editor and paste the key where it says `OPENAI_API_KEY`.
 
-### 2. Start the Agent
+(Advanced configuration like timeouts and models are handled in `config/config.toml`).
+
+### Step 2: Start the Test Servers (Optional)
+To test the agent safely on your computer without touching real servers, we have provided a simulated server environment. Run:
+```bash
+just up
+```
+This boots up a fake Web Server and a fake Database Server specifically for testing! (When you're done, you can stop them with `just down`).
+
+### Step 3: Start the Agent
 You can start the visual dashboard by running:
 ```bash
 just run
 ```
 *(If your computer says `command not found: just`, you can type `go run cmd/agent/main.go` instead).*
 
-### 3. How to use the Dashboard
+### Step 4: How to use the Dashboard
 Once the agent starts, you will see a colorful terminal application split into panels:
 - **Top Bar**: Shows you how many tasks succeeded, failed, or are waiting for your approval.
 - **Left Panel (Targets)**: Shows the list of servers it is trying to connect to.
