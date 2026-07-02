@@ -57,6 +57,13 @@ go test -cover ./...               # Coverage report
 2. **Green**: Write minimum code to make the test pass
 3. **Refactor**: Clean up while keeping tests green
 
+### Coverage Rule
+**Every code change MUST improve or maintain test coverage.** Before committing:
+```bash
+go test -cover ./...
+```
+If coverage decreases, add tests for the uncovered paths. Target: 80%+ for domain layer, 60%+ overall.
+
 ### Where Tests Live
 - `internal/domain/agent/*_test.go` — Domain logic tests (fast, no external deps)
 - `internal/infrastructure/ssh/*_test.go` — SSH client tests (mock the vault)
