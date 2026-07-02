@@ -1,38 +1,48 @@
-# OpenCode Agent Instructions
+# PROJECT KNOWLEDGE BASE
 
-This repository contains a DevOps Agent implemented in Go using Clean Architecture, Domain-Driven Design (DDD), and Bubble Tea for the Terminal UI.
+**Generated:** 2026-07-02
 
-## Build and Run
+## OVERVIEW
+This is an autonomous DevOps Agent implemented in Go. It uses Clean Architecture, Domain-Driven Design (DDD), and Bubble Tea for an interactive Terminal UI (TUI). It leverages Qwen 2.5 (via OpenAI SDK) for LLM-based bash log analysis and a local encrypted AES-256 vault for SSH secret management.
 
-- **Build**: `CGO_ENABLED=0 go build -o agent ./cmd/agent/main.go`
-- **Run**: `go run cmd/agent/main.go`
-- **Database**: SQLite database is automatically created at `./agent.db`. It uses `modernc.org/sqlite`, a pure Go SQLite driver, so CGO is **not** required.
-- **Docker**: A multi-stage Dockerfile is provided. Build with `docker build -t devops-agent .`.
-- **Just**: A `Justfile` is provided for common commands (e.g., `just build`, `just run`).
+## STRUCTURE
+```text
+./
+├── cmd/agent/          # Entry point
+├── internal/
+│   ├── domain/         # Pure domain entities/interfaces (ZERO external dependencies)
+│   ├── infrastructure/ # External services (SSH, SQLite, LLM, Config)
+│   └── ui/tui/         # Bubble Tea UI
+└── hosts.yaml          # Ansible-style inventory for target servers
+```
 
-## Architecture & Code Boundaries
+## WHERE TO LOOK
+| Task | Location | Notes |
+|------|----------|-------|
+| Adding a new TUI feature | `internal/ui/tui/bubbletea_view.go` | Must manage window size constraints perfectly |
+| Orchestration logic | `internal/domain/agent/engine.go` | Where `RunTask` lives |
+| LLM / OpenAI config | `internal/infrastructure/llm/` | Model configured via `.env` |
+| SSH / Agent checks | `internal/infrastructure/ssh/` | Where idempotency and execution happen |
 
-The project strictly follows Clean Architecture:
+## CONVENTIONS
+- **Error Handling**: Always wrap errors with context using `fmt.Errorf("context: %w", err)`.
+- **TUI Constraints**: Do not use `log.Print` or `fmt.Println` to `stdout`/`stderr` during agent operation; it corrupts Bubble Tea. Use the provided `logChan` or write to a file.
+- **Dependency Rule**: The `internal/domain` layer MUST NOT import any external dependencies or infrastructure-specific packages.
 
-- **Domain Layer** (`internal/domain/agent`):
-  - Contains entities, value objects, and repository/service interfaces.
-  - **CRITICAL**: The domain layer MUST NOT import any external dependencies or infrastructure-specific packages.
-- **Infrastructure Layer** (`internal/infrastructure`):
-  - Implements interfaces defined in the domain layer (e.g., SQLite DB, SSH Client).
-- **UI Layer** (`internal/ui/tui`):
-  - Implements the TUI using `github.com/charmbracelet/bubbletea`.
+## ANTI-PATTERNS (THIS PROJECT)
+- **Hardcoding Wait Times**: Never use static `time.Sleep` for network/LLM calls. Context timeouts are configured via `SSH_TIMEOUT_SECONDS` and `LLM_TIMEOUT_SECONDS` in `.env`.
+- **Horizontal Overflow in UI**: When building Lipgloss UI components, border width (2 or 4 chars) MUST be explicitly subtracted when assigning widths to child views to prevent terminal wrap-around bugs.
 
-## Coding Conventions
+## COMMANDS
+```bash
+# Build binary without CGO requirements (Pure Go)
+just build
+# Alternatively: CGO_ENABLED=0 go build -o agent ./cmd/agent/main.go
 
-- **Error Handling**: Always wrap errors with context using the pattern: `fmt.Errorf("context: %w", err)`.
-- **TUI Constraints**: Do not use standard `log.Print` or `fmt.Println` to `stdout`/`stderr` inside goroutines or handlers when the TUI is running, as it will corrupt the Bubble Tea interface. Route logs to a file or use the provided `logChan` to render logs inside the TUI.
-- **SSH Client**: SSH execution runs in a pseudo-terminal (`vt100`). Always close SSH sessions and connections explicitly using `defer` blocks.
+# Run the TUI application
+just run
+```
 
-## Configuration & Environment Variables
-
-The agent reads configuration from a `.env` file at the root. Example variables:
-- `OPENAI_BASE_URL`: API Endpoint (e.g., `https://openrouter.ai/api/v1` or `http://localhost:11434/v1`).
-- `OPENAI_API_KEY`: API authentication key.
-- `LLM_MODEL`: Target model (e.g., `qwen/qwen-2.5-coder-32b-instruct`).
-- `SSH_TIMEOUT_SECONDS`: Graceful timeout for network/SSH failures (default: 30).
-- `LLM_TIMEOUT_SECONDS`: Graceful timeout for AI inference calls (default: 15).
+## NOTES
+- **CGO is NOT required** because this project uses `modernc.org/sqlite`.
+- Ensure `.env` is populated with `OPENAI_API_KEY`. The app falls back to OpenRouter.ai and `qwen/qwen-2.5-coder-32b-instruct` if variables are missing.
