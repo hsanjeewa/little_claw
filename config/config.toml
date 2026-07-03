@@ -1,0 +1,9 @@
+[llm]
+base_url = "https://openrouter.ai/api/v1"
+model = "qwen/qwen-2.5-coder-32b-instruct"
+timeout_seconds = 15
+
+[agent]
+ssh_timeout_seconds = 30
+inventory_path = "hosts.yaml"
+database_path = "./agent.db"

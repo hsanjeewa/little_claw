@@ -6,13 +6,9 @@ all:
           ansible_host: 127.0.0.1
           ansible_port: 2222
           ansible_user: deployer
-        web-prod-02:
-          ansible_host: 127.0.0.1
-          ansible_port: 2223
-          ansible_user: deployer
     databases:
       hosts:
         db-master:
           ansible_host: 127.0.0.1
-          ansible_port: 2224
+          ansible_port: 2223
           ansible_user: postgres
