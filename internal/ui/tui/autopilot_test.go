@@ -1,0 +1,68 @@
+package tui
+
+import (
+	"strings"
+	"testing"
+
+	tea "github.com/charmbracelet/bubbletea"
+)
+
+func TestAutopilotModel_ViewRendersCommandBarAndPanes(t *testing.T) {
+	m := NewAutopilotModel()
+	updated, _ := m.Update(tea.WindowSizeMsg{Width: 80, Height: 24})
+	m = updated.(AutopilotModel)
+
+	view := m.View()
+	if !strings.Contains(view, "COMMAND") {
+		t.Fatalf("expected Autopilot view to render command bar label, got:\n%s", view)
+	}
+	if !strings.Contains(view, "PLAN") {
+		t.Fatalf("expected Autopilot view to render plan pane label, got:\n%s", view)
+	}
+	if !strings.Contains(view, "TRANSCRIPT") {
+		t.Fatalf("expected Autopilot view to render transcript pane label, got:\n%s", view)
+	}
+}
+
+func TestAutopilotModel_CommandBarAcceptsInput(t *testing.T) {
+	m := NewAutopilotModel()
+	updated, _ := m.Update(tea.WindowSizeMsg{Width: 80, Height: 24})
+	m = updated.(AutopilotModel)
+
+	for _, r := range "deploy web" {
+		updated, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{r}})
+		m = updated.(AutopilotModel)
+	}
+
+	view := m.View()
+	if !strings.Contains(view, "deploy web") {
+		t.Fatalf("expected Autopilot command bar to display typed input, got:\n%s", view)
+	}
+}
+
+func TestAutopilotModel_StoresWindowSize(t *testing.T) {
+	m := NewAutopilotModel()
+	updated, _ := m.Update(tea.WindowSizeMsg{Width: 80, Height: 24})
+	m = updated.(AutopilotModel)
+
+	if m.width != 80 {
+		t.Fatalf("expected width 80, got %d", m.width)
+	}
+	if m.height != 24 {
+		t.Fatalf("expected height 24, got %d", m.height)
+	}
+}
+
+func TestAutopilotModel_FocusCyclesOnTab(t *testing.T) {
+	m := NewAutopilotModel()
+	updated, _ := m.Update(tea.WindowSizeMsg{Width: 80, Height: 24})
+	m = updated.(AutopilotModel)
+
+	initialFocus := m.focusedPane
+	updated, _ = m.Update(tea.KeyMsg{Type: tea.KeyTab})
+	m = updated.(AutopilotModel)
+
+	if m.focusedPane == initialFocus {
+		t.Fatalf("expected focus to change after Tab, still at %d", m.focusedPane)
+	}
+}
