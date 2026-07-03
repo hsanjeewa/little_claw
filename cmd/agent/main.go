@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"log"
 	"os"
-	"strconv"
 	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
@@ -13,6 +12,7 @@ import (
 	"github.com/joho/godotenv"
 
 	"github.com/devops/agent/internal/domain/agent"
+	"github.com/devops/agent/internal/infrastructure/config"
 	"github.com/devops/agent/internal/infrastructure/database"
 	"github.com/devops/agent/internal/infrastructure/inventory"
 	"github.com/devops/agent/internal/infrastructure/llm"
@@ -24,60 +24,52 @@ import (
 func main() {
 	_ = godotenv.Load()
 
+	cfg, err := config.LoadConfig("config/config.toml")
+	if err != nil {
+		log.Fatalf("Failed to load config: %v", err)
+	}
+
 	taskChan := make(chan agent.Task, 10)
 	logChan := make(chan agent.ExecutionLog, 10)
 	hitlChan := make(chan agent.HitlRequest, 10)
 
-	dbPath := "./agent.db"
-	repo, err := database.NewSQLiteRepository(dbPath)
+	repo, err := database.NewSQLiteRepository(cfg.Agent.DatabasePath)
 	if err != nil {
 		log.Fatalf("Failed to initialize database: %v", err)
 	}
 
-	baseURL := os.Getenv("OPENAI_BASE_URL")
 	apiKey := os.Getenv("OPENAI_API_KEY")
-	modelName := os.Getenv("LLM_MODEL")
 
-	if baseURL == "" {
-		baseURL = "https://openrouter.ai/api/v1"
-	}
-	if modelName == "" {
-		modelName = "qwen/qwen-2.5-coder-32b-instruct"
-	}
+	sshTimeout := time.Duration(cfg.Agent.SSHTimeoutSeconds) * time.Second
+	llmTimeout := time.Duration(cfg.LLM.TimeoutSeconds) * time.Second
 
-	sshTimeoutSecs := 30
-	if val := os.Getenv("SSH_TIMEOUT_SECONDS"); val != "" {
-		if parsed, err := strconv.Atoi(val); err == nil {
-			sshTimeoutSecs = parsed
-		}
-	}
-	sshTimeout := time.Duration(sshTimeoutSecs) * time.Second
+	analyzer := llm.NewLocalOpenAIClient(cfg.LLM.BaseURL, apiKey, cfg.LLM.Model)
 
-	llmTimeoutSecs := 15
-	if val := os.Getenv("LLM_TIMEOUT_SECONDS"); val != "" {
-		if parsed, err := strconv.Atoi(val); err == nil {
-			llmTimeoutSecs = parsed
-		}
-	}
-	llmTimeout := time.Duration(llmTimeoutSecs) * time.Second
-
-	analyzer := llm.NewLocalOpenAIClient(baseURL, apiKey, modelName)
-	
 	masterSecret := []byte("a-very-secret-key-32-bytes-long!!")
 	vault := security.NewLocalEncryptedVault(masterSecret)
-	
+
+	privateKeyData, err := os.ReadFile("test_keys/id_ed25519")
+	if err == nil {
+		_ = vault.EncryptAndStore("web-prod-01", string(privateKeyData))
+		_ = vault.EncryptAndStore("db-master", string(privateKeyData))
+	} else {
+		log.Printf("Warning: test_keys/id_ed25519 not found. SSH execution will fail.")
+	}
+
 	sshClient := ssh.NewSSHClient(vault)
+	watchtowerCollector := ssh.NewWatchtowerMemoryCollector(sshClient)
+	watchtowerCPUCollector := ssh.NewWatchtowerCPUCollector(sshClient)
 	idempHelper := ssh.NewLinuxIdempotencyAnalyzer(sshClient)
 	
 	engine := agent.NewEngine(sshClient, repo, analyzer, idempHelper, taskChan, logChan, sshTimeout, llmTimeout)
 
-	targets, err := inventory.LoadInventory("hosts.yaml")
+	targets, err := inventory.LoadInventory(cfg.Agent.InventoryPath)
 	if err != nil {
 		log.Fatalf("Failed to load inventory: %v", err)
 	}
 
 	var tasks []agent.Task
-	
+
 	for _, target := range targets {
 		if target.Alias == "db-master" {
 			t, _ := agent.NewTask(uuid.New().String(), target.Alias, target.IP, target.Port, target.User, "pg_dump data.sql", true)
@@ -89,7 +81,7 @@ func main() {
 		}
 	}
 
-	model := tui.NewModel(taskChan, logChan, hitlChan, tasks)
+	model := tui.NewShellWithInventoryAndCollectors(taskChan, logChan, hitlChan, tasks, targets, watchtowerCollector.CollectMemory, watchtowerCPUCollector.CollectCPU)
 
 	go func() {
 		for i := range tasks {
