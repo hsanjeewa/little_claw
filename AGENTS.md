@@ -5,6 +5,8 @@
 ## OVERVIEW
 This is an autonomous DevOps Agent implemented in Go. It uses Clean Architecture, Domain-Driven Design (DDD), and Bubble Tea for an interactive Terminal UI (TUI). It leverages Qwen 2.5 (via OpenAI SDK) for LLM-based bash log analysis and a local encrypted AES-256 vault for SSH secret management.
 
+The project name **little_claw** was inspired by the *Game of Thrones* character **Littlefinger** ("Little Finger"), reflecting strategic orchestration and subtle control across many moving parts.
+
 ## STRUCTURE
 ```text
 ./
