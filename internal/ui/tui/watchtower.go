@@ -381,7 +381,7 @@ func (m WatchtowerModel) renderCompactDashboard(width, height int) string {
 	lowerHeight := max(height-upperHeight, 1)
 	hosts := lipgloss.JoinVertical(
 		lipgloss.Left,
-		lipgloss.NewStyle().Bold(true).Render("HOSTS"),
+		lipgloss.NewStyle().Bold(true).Render("FLEET MATRIX"),
 		constrainSurfaceContent(m.renderHostsBody(), width, max(upperHeight-1, 1)),
 	)
 	title := "FLEET"
@@ -466,7 +466,7 @@ func (m WatchtowerModel) renderHostsBody() string {
 			if snapshot.Status == agent.SnapshotStatusFailed {
 				status = "FAILED"
 			}
-			lines = append(lines, fmt.Sprintf("%s %-11s %3.0f%% %s", marker, snapshot.HostAlias, snapshot.UsagePercent, status))
+			lines = append(lines, fmt.Sprintf("%s %-11s %5.1f%% %s", marker, snapshot.HostAlias, snapshot.UsagePercent, status))
 		}
 		return strings.Join(lines, "\n")
 	case agent.MetricFamilyStorage:
@@ -484,7 +484,7 @@ func (m WatchtowerModel) renderHostsBody() string {
 			if snapshot.Status == agent.SnapshotStatusFailed {
 				status = "FAILED"
 			}
-			lines = append(lines, fmt.Sprintf("%s %-11s %3.0f%% %s", marker, snapshot.HostAlias, snapshot.UsedPercent, status))
+			lines = append(lines, fmt.Sprintf("%s %-11s %5.1f%% %s", marker, snapshot.HostAlias, snapshot.UsedPercent, status))
 		}
 		return strings.Join(lines, "\n")
 	case agent.MetricFamilyNetwork:
@@ -520,7 +520,7 @@ func (m WatchtowerModel) renderHostsBody() string {
 			if snapshot.Status == agent.SnapshotStatusFailed {
 				status = "FAILED"
 			}
-			lines = append(lines, fmt.Sprintf("%s %-11s %3.0f%% %s", marker, snapshot.HostAlias, snapshot.UsedPercent, status))
+			lines = append(lines, fmt.Sprintf("%s %-11s %5.1f%% %s", marker, snapshot.HostAlias, snapshot.UsedPercent, status))
 		}
 		return strings.Join(lines, "\n")
 	}

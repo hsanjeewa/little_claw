@@ -309,7 +309,7 @@ func TestWatchtowerModel_SwitchesToStorageFleet(t *testing.T) {
 	if !strings.Contains(view, string(agent.MetricFamilyStorage)) {
 		t.Fatalf("expected storage family in view, got:\n%s", view)
 	}
-	if !strings.Contains(view, "75%") {
+	if !strings.Contains(view, "75.0%") {
 		t.Fatalf("expected storage usage in view, got:\n%s", view)
 	}
 }
