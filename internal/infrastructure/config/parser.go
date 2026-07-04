@@ -9,14 +9,15 @@ import (
 
 type Config struct {
 	LLM struct {
-		BaseURL       string `toml:"base_url"`
-		Model         string `toml:"model"`
+		BaseURL        string `toml:"base_url"`
+		Model          string `toml:"model"`
 		TimeoutSeconds int    `toml:"timeout_seconds"`
 	} `toml:"llm"`
 	Agent struct {
 		SSHTimeoutSeconds int    `toml:"ssh_timeout_seconds"`
 		InventoryPath     string `toml:"inventory_path"`
 		DatabasePath      string `toml:"database_path"`
+		WatchtowerBackend string `toml:"watchtower_backend"`
 	} `toml:"agent"`
 }
 
@@ -62,5 +63,8 @@ func applyDefaults(cfg *Config) {
 	}
 	if cfg.Agent.DatabasePath == "" {
 		cfg.Agent.DatabasePath = "./agent.db"
+	}
+	if cfg.Agent.WatchtowerBackend == "" {
+		cfg.Agent.WatchtowerBackend = "ssh"
 	}
 }

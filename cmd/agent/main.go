@@ -17,6 +17,7 @@ import (
 	"github.com/devops/agent/internal/infrastructure/inventory"
 	"github.com/devops/agent/internal/infrastructure/llm"
 	"github.com/devops/agent/internal/infrastructure/security"
+	"github.com/devops/agent/internal/infrastructure/simulator"
 	"github.com/devops/agent/internal/infrastructure/ssh"
 	"github.com/devops/agent/internal/ui/tui"
 )
@@ -57,39 +58,62 @@ func main() {
 	}
 
 	sshClient := ssh.NewSSHClient(vault)
-	watchtowerCollector := ssh.NewWatchtowerMemoryCollector(sshClient)
-	watchtowerCPUCollector := ssh.NewWatchtowerCPUCollector(sshClient)
 	idempHelper := ssh.NewLinuxIdempotencyAnalyzer(sshClient)
-	
+
 	engine := agent.NewEngine(sshClient, repo, analyzer, idempHelper, taskChan, logChan, sshTimeout, llmTimeout)
 
-	targets, err := inventory.LoadInventory(cfg.Agent.InventoryPath)
-	if err != nil {
-		log.Fatalf("Failed to load inventory: %v", err)
+	watchtowerBackend := cfg.Agent.WatchtowerBackend
+	var (
+		targets          []inventory.TargetHost
+		memoryCollector  tui.MemorySnapshotCollector
+		cpuCollector     tui.CPUSnapshotCollector
+		storageCollector tui.StorageSnapshotCollector
+		networkCollector tui.NetworkSnapshotCollector
+	)
+
+	if watchtowerBackend == "simulator" {
+		simBackend := simulator.NewWatchtowerBackend()
+		targets = simBackend.Fleet()
+		memoryCollector = simBackend.CollectMemory
+		cpuCollector = simBackend.CollectCPU
+		storageCollector = simBackend.CollectStorage
+		networkCollector = simBackend.CollectNetwork
+	} else {
+		targets, err = inventory.LoadInventory(cfg.Agent.InventoryPath)
+		if err != nil {
+			log.Fatalf("Failed to load inventory: %v", err)
+		}
+		watchtowerCollector := ssh.NewWatchtowerMemoryCollector(sshClient)
+		watchtowerCPUCollector := ssh.NewWatchtowerCPUCollector(sshClient)
+		memoryCollector = watchtowerCollector.CollectMemory
+		cpuCollector = watchtowerCPUCollector.CollectCPU
 	}
 
 	var tasks []agent.Task
-
-	for _, target := range targets {
-		if target.Alias == "db-master" {
-			t, _ := agent.NewTask(uuid.New().String(), target.Alias, target.IP, target.Port, target.User, "pg_dump data.sql", true)
-			tasks = append(tasks, t)
-		} else {
-			t1, _ := agent.NewTask(uuid.New().String(), target.Alias, target.IP, target.Port, target.User, "uptime", false)
-			t2, _ := agent.NewTask(uuid.New().String(), target.Alias, target.IP, target.Port, target.User, "sudo apt-get update", true)
-			tasks = append(tasks, t1, t2)
+	if watchtowerBackend != "simulator" {
+		for _, target := range targets {
+			if target.Alias == "db-master" {
+				t, _ := agent.NewTask(uuid.New().String(), target.Alias, target.IP, target.Port, target.User, "pg_dump data.sql", true)
+				tasks = append(tasks, t)
+			} else {
+				t1, _ := agent.NewTask(uuid.New().String(), target.Alias, target.IP, target.Port, target.User, "uptime", false)
+				t2, _ := agent.NewTask(uuid.New().String(), target.Alias, target.IP, target.Port, target.User, "sudo apt-get update", true)
+				tasks = append(tasks, t1, t2)
+			}
 		}
 	}
 
-	model := tui.NewShellWithInventoryAndCollectors(taskChan, logChan, hitlChan, tasks, targets, watchtowerCollector.CollectMemory, watchtowerCPUCollector.CollectCPU)
+	model := tui.NewShellWithInventoryAndAllCollectors(taskChan, logChan, hitlChan, tasks, targets, memoryCollector, cpuCollector, storageCollector, networkCollector)
 
-	go func() {
-		for i := range tasks {
-			t := tasks[i]
-			time.Sleep(1 * time.Second) // Stagger execution slightly
-			engine.RunTask(context.Background(), t, hitlChan)
-		}
-	}()
+	if watchtowerBackend != "simulator" {
+		go func() {
+			for i := range tasks {
+				t := tasks[i]
+				time.Sleep(1 * time.Second) // Stagger execution slightly
+				engine.RunTask(context.Background(), t, hitlChan)
+			}
+		}()
+	}
 
 	p := tea.NewProgram(model, tea.WithAltScreen())
 	if _, err := p.Run(); err != nil {
