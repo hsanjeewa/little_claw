@@ -54,6 +54,12 @@ just run
 ```
 *(If your computer says `command not found: just`, you can type `go run cmd/agent/main.go` instead).*
 
+If you want Watchtower to start directly on the built-in simulator backend instead of SSH-backed hosts, set this in `config/config.toml`:
+```toml
+[agent]
+watchtower_backend = "simulator"
+```
+
 ### Step 4: How to use the TUI
 When the agent starts, you will land in the new shell-based TUI. It currently has three top-level modes:
 
@@ -67,6 +73,7 @@ little_claw uses a **leader key** inspired by terminal multiplexers:
 - Press `Ctrl+a`, then `w` to go to **Watchtower**
 - Press `Ctrl+a`, then `a` to go to **Autopilot**
 - Press `Ctrl+a`, then `c` to go to **Copilot**
+- Press `Ctrl+a`, then `z` to attach the built-in **Watchtower simulator** for UI review
 
 If you press `Ctrl+a`, the shell will briefly show that it is waiting for the next mode key.
 
@@ -78,9 +85,13 @@ Watchtower opens first by default and focuses on server health across your inven
 - `b` — go back from Host Detail to the fleet matrix
 - `1` — switch to the **Memory** metric family
 - `2` — switch to the **CPU** metric family
+- `3` — switch to the **Storage** metric family
+- `4` — switch to the **Network** metric family
 - `r` — refresh the current metric family
 - `a` — escalate the current Watchtower context into **Autopilot**
 - `c` — escalate the current Watchtower context into **Copilot**
+
+The simulator fleet currently exposes at least 4 hosts and supports all four Watchtower metric families. Repeated refreshes will change the simulated values over time so you can review the UI with moving data.
 
 #### Basic Autopilot and Copilot controls
 Autopilot and Copilot are currently interactive skeletons that help you learn the layout and flow:
