@@ -6,9 +6,21 @@ import (
 	"testing"
 
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/charmbracelet/lipgloss"
 
 	"github.com/devops/agent/internal/domain/agent"
 )
+
+func assertRenderedWithinBounds(t *testing.T, view string, width, height int) {
+	t.Helper()
+
+	if got := lipgloss.Width(view); got > width {
+		t.Fatalf("expected rendered width <= %d, got %d\nview:\n%s", width, got, view)
+	}
+	if got := lipgloss.Height(view); got > height {
+		t.Fatalf("expected rendered height <= %d, got %d\nview:\n%s", height, got, view)
+	}
+}
 
 func testChannels() (chan agent.Task, chan agent.ExecutionLog, chan agent.HitlRequest) {
 	return make(chan agent.Task, 1), make(chan agent.ExecutionLog, 1), make(chan agent.HitlRequest, 1)
@@ -118,6 +130,48 @@ func TestShell_WatchtowerViewRendersFleetMatrix(t *testing.T) {
 	view := shell.View()
 	if !strings.Contains(view, "FLEET MATRIX") || !strings.Contains(view, "db-master") {
 		t.Fatalf("expected Watchtower shell view to render fleet matrix, got:\n%s", view)
+	}
+}
+
+func TestShell_InitialWatchtowerViewFitsFallbackViewport(t *testing.T) {
+	taskChan, logChan, hitlChan := testChannels()
+	shell := NewShellWithInventory(taskChan, logChan, hitlChan, nil, testInventory())
+
+	updated, _ := shell.Update(watchtowerSnapshotsMsg{snapshots: testMemorySnapshots()})
+	shell = updated.(Shell)
+
+	view := shell.View()
+	assertRenderedWithinBounds(t, view, 80, 24)
+
+	if !strings.Contains(view, "WATCHTOWER") {
+		t.Fatalf("expected shell chrome to remain visible on initial render, got:\n%s", view)
+	}
+	if !strings.Contains(view, "MEMORY") {
+		t.Fatalf("expected watchtower title to remain visible on initial render, got:\n%s", view)
+	}
+}
+
+func TestShell_WatchtowerViewRespectsWindowResizeBounds(t *testing.T) {
+	taskChan, logChan, hitlChan := testChannels()
+	shell := NewShellWithInventory(taskChan, logChan, hitlChan, nil, testInventory())
+
+	updated, _ := shell.Update(watchtowerSnapshotsMsg{snapshots: testMemorySnapshots()})
+	shell = updated.(Shell)
+
+	updated, _ = shell.Update(tea.WindowSizeMsg{Width: 48, Height: 6})
+	shell = updated.(Shell)
+
+	compact := shell.View()
+	assertRenderedWithinBounds(t, compact, 48, 6)
+
+	updated, _ = shell.Update(tea.WindowSizeMsg{Width: 72, Height: 10})
+	shell = updated.(Shell)
+
+	resized := shell.View()
+	assertRenderedWithinBounds(t, resized, 72, 10)
+
+	if !strings.Contains(resized, "db-master") {
+		t.Fatalf("expected resized watchtower view to keep rendering host data, got:\n%s", resized)
 	}
 }
 

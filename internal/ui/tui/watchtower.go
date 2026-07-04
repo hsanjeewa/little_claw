@@ -9,6 +9,7 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
+	"github.com/charmbracelet/x/ansi"
 
 	"github.com/devops/agent/internal/domain/agent"
 	"github.com/devops/agent/internal/infrastructure/inventory"
@@ -33,19 +34,19 @@ type watchtowerCPUSnapshotsMsg struct {
 }
 
 type WatchtowerModel struct {
-	width      int
-	height     int
-	inventory  []inventory.TargetHost
-	scope      TargetScope
+	width           int
+	height          int
+	inventory       []inventory.TargetHost
+	scope           TargetScope
 	memoryCollector MemorySnapshotCollector
 	cpuCollector    CPUSnapshotCollector
 	metricFamily    agent.MetricFamily
 	memorySnapshots []agent.MemorySnapshot
 	cpuSnapshots    []agent.CPUSnapshot
-	selected   int
-	viewMode   watchtowerViewMode
-	refreshing bool
-	legacy     Model
+	selected        int
+	viewMode        watchtowerViewMode
+	refreshing      bool
+	legacy          Model
 }
 
 func NewWatchtowerModel(
@@ -75,13 +76,13 @@ func NewWatchtowerModelWithCollectors(
 	}
 
 	return WatchtowerModel{
-		inventory:        cloneHosts(inv),
-		scope:            scope.Clone(),
-		memoryCollector:  memoryCollector,
-		cpuCollector:     cpuCollector,
-		metricFamily:     agent.MetricFamilyMemory,
-		viewMode:         watchtowerViewFleet,
-		legacy:           NewModel(taskChan, logChan, hitlChan, initialTasks),
+		inventory:       cloneHosts(inv),
+		scope:           scope.Clone(),
+		memoryCollector: memoryCollector,
+		cpuCollector:    cpuCollector,
+		metricFamily:    agent.MetricFamilyMemory,
+		viewMode:        watchtowerViewFleet,
+		legacy:          NewModel(taskChan, logChan, hitlChan, initialTasks),
 	}
 }
 
@@ -193,9 +194,13 @@ func (m WatchtowerModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 }
 
 func (m WatchtowerModel) View() string {
-	if m.width == 0 || m.height == 0 {
-		m.width = 100
-		m.height = 24
+	width := m.width
+	if width == 0 {
+		width = 80
+	}
+	height := m.height
+	if height == 0 {
+		height = 24
 	}
 
 	title := lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("#7D56F4")).Render(string(m.metricFamily))
@@ -205,11 +210,33 @@ func (m WatchtowerModel) View() string {
 
 	scopeLine := lipgloss.NewStyle().Foreground(lipgloss.Color("#A0A0A0")).Render(m.scope.String())
 
+	var content string
 	if m.viewMode == watchtowerViewHostDetail {
-		return lipgloss.JoinVertical(lipgloss.Left, title, scopeLine, m.renderHostDetail())
+		content = lipgloss.JoinVertical(lipgloss.Left, title, scopeLine, m.renderHostDetail())
+	} else {
+		content = lipgloss.JoinVertical(lipgloss.Left, title, scopeLine, m.renderFleetMatrix())
 	}
 
-	return lipgloss.JoinVertical(lipgloss.Left, title, scopeLine, m.renderFleetMatrix())
+	return constrainSurfaceContent(content, width, height-1)
+}
+
+func constrainSurfaceContent(content string, width, maxLines int) string {
+	if width < 0 {
+		width = 0
+	}
+	if maxLines < 0 {
+		maxLines = 0
+	}
+
+	lines := strings.Split(content, "\n")
+	if len(lines) > maxLines {
+		lines = lines[:maxLines]
+	}
+	for i, line := range lines {
+		lines[i] = ansi.Truncate(line, width, "")
+	}
+
+	return strings.Join(lines, "\n")
 }
 
 func (m WatchtowerModel) refreshCurrentFamilyCmd(hosts []inventory.TargetHost) tea.Cmd {
