@@ -91,6 +91,45 @@ func TestShell_SwitchModeWithLeaderKeys(t *testing.T) {
 	}
 }
 
+func TestShell_AttachesSimulatorWithLeaderKey(t *testing.T) {
+	taskChan, logChan, hitlChan := testChannels()
+	shell := leaderSwitch(t, NewShell(taskChan, logChan, hitlChan, nil), 'a')
+
+	updated, _ := shell.Update(tea.KeyMsg{Type: tea.KeyCtrlA})
+	shell = updated.(Shell)
+	updated, cmd := shell.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'z'}})
+	shell = updated.(Shell)
+
+	if shell.ActiveMode() != ModeWatchtower {
+		t.Fatalf("expected Ctrl+a,z to switch to Watchtower, got %v", shell.ActiveMode())
+	}
+	if shell.Scope().Kind != ScopeEntireInventory {
+		t.Fatalf("expected simulator attach to reset scope to EntireInventory, got %v", shell.Scope().Kind)
+	}
+	if len(shell.Inventory()) < 4 {
+		t.Fatalf("expected simulator fleet with at least 4 hosts, got %d", len(shell.Inventory()))
+	}
+	if cmd == nil {
+		t.Fatal("expected simulator attach to trigger refresh command")
+	}
+
+	msg := cmd()
+	updated, _ = shell.Update(msg)
+	shell = updated.(Shell)
+
+	view := shell.View()
+	if !strings.Contains(view, "api-east-01") {
+		t.Fatalf("expected simulator host in Watchtower view, got:\n%s", view)
+	}
+	if !strings.Contains(view, "MEMORY") {
+		t.Fatalf("expected Watchtower to render simulator metric family, got:\n%s", view)
+	}
+	assertRenderedWithinBounds(t, view, 80, 24)
+	if strings.Contains(view, "LEADER: w/a/c/z") {
+		t.Fatalf("expected leader mode to clear after simulator attach, got:\n%s", view)
+	}
+}
+
 func TestShell_LeaderKeyShowsPendingStateUntilModeKey(t *testing.T) {
 	taskChan, logChan, hitlChan := testChannels()
 	shell := NewShell(taskChan, logChan, hitlChan, nil)
@@ -128,8 +167,8 @@ func TestShell_WatchtowerViewRendersFleetMatrix(t *testing.T) {
 	shell = updated.(Shell)
 
 	view := shell.View()
-	if !strings.Contains(view, "FLEET MATRIX") || !strings.Contains(view, "db-master") {
-		t.Fatalf("expected Watchtower shell view to render fleet matrix, got:\n%s", view)
+	if (!strings.Contains(view, "HOSTS") && !strings.Contains(view, "FLEET") && !strings.Contains(view, "DETAIL")) || !strings.Contains(view, "db-master") {
+		t.Fatalf("expected Watchtower shell view to render dashboard panes, got:\n%s", view)
 	}
 }
 

@@ -9,6 +9,7 @@ import (
 
 	"github.com/devops/agent/internal/domain/agent"
 	"github.com/devops/agent/internal/infrastructure/inventory"
+	"github.com/devops/agent/internal/infrastructure/simulator"
 )
 
 // Mode identifies one of the three top-level shell surfaces.
@@ -102,10 +103,24 @@ func NewShellWithInventoryAndCollectors(
 	memoryCollector MemorySnapshotCollector,
 	cpuCollector CPUSnapshotCollector,
 ) Shell {
+	return NewShellWithInventoryAndAllCollectors(taskChan, logChan, hitlChan, initialTasks, inv, memoryCollector, cpuCollector, nil, nil)
+}
+
+func NewShellWithInventoryAndAllCollectors(
+	taskChan chan agent.Task,
+	logChan chan agent.ExecutionLog,
+	hitlChan chan agent.HitlRequest,
+	initialTasks []agent.Task,
+	inv []inventory.TargetHost,
+	memoryCollector MemorySnapshotCollector,
+	cpuCollector CPUSnapshotCollector,
+	storageCollector StorageSnapshotCollector,
+	networkCollector NetworkSnapshotCollector,
+) Shell {
 	s := NewShell(taskChan, logChan, hitlChan, initialTasks)
 	s.inventory = cloneHosts(inv)
 	s.scope = TargetScope{Kind: ScopeEntireInventory, Hosts: cloneHosts(inv)}
-	s.watchtower = NewWatchtowerModelWithCollectors(taskChan, logChan, hitlChan, initialTasks, inv, s.scope, memoryCollector, cpuCollector)
+	s.watchtower = NewWatchtowerModelWithAllCollectors(taskChan, logChan, hitlChan, initialTasks, inv, s.scope, memoryCollector, cpuCollector, storageCollector, networkCollector)
 	return s
 }
 
@@ -178,9 +193,12 @@ func (s Shell) Hotkeys() []string {
 			"b back",
 			"1 memory",
 			"2 cpu",
+			"3 storage",
+			"4 network",
 			"r refresh",
 			"a escalate autopilot",
 			"c escalate copilot",
+			"Ctrl+a z simulator",
 			"q quit",
 			"Ctrl+a w Watchtower",
 			"Ctrl+a a Autopilot",
@@ -189,6 +207,7 @@ func (s Shell) Hotkeys() []string {
 	case ModeAutopilot:
 		return []string{
 			"runs autonomously",
+			"Ctrl+a z simulator",
 			"Ctrl+a w Watchtower",
 			"Ctrl+a a Autopilot",
 			"Ctrl+a c Copilot",
@@ -196,6 +215,7 @@ func (s Shell) Hotkeys() []string {
 	case ModeCopilot:
 		return []string{
 			"collaborative mode",
+			"Ctrl+a z simulator",
 			"Ctrl+a w Watchtower",
 			"Ctrl+a a Autopilot",
 			"Ctrl+a c Copilot",
@@ -223,6 +243,8 @@ func (s Shell) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				return s.switchMode(ModeAutopilot)
 			case "c":
 				return s.switchMode(ModeCopilot)
+			case "z":
+				return s.attachSimulator()
 			}
 			return s, nil
 		}
@@ -267,7 +289,7 @@ func (s Shell) View() string {
 
 	chromeText := fmt.Sprintf("%s | %s", s.StatusBadge(), s.ScopeBadge())
 	if s.leaderMode {
-		chromeText += " | LEADER: w/a/c"
+		chromeText += " | LEADER: w/a/c/z"
 	}
 	chrome := shellChromeStyle.Width(w - shellChromeStyle.GetHorizontalFrameSize()).Render(chromeText)
 
@@ -344,4 +366,25 @@ func (s Shell) switchMode(m Mode) (tea.Model, tea.Cmd) {
 	}
 
 	return s, tea.Batch(cmds...)
+}
+
+func (s Shell) attachSimulator() (tea.Model, tea.Cmd) {
+	backend := simulator.NewWatchtowerBackend()
+	fleet := backend.Fleet()
+	s.inventory = cloneHosts(fleet)
+	s.scope = TargetScope{Kind: ScopeEntireInventory, Hosts: cloneHosts(fleet)}
+	s.mode = ModeWatchtower
+	s.leaderMode = false
+
+	watchtower, ok := s.watchtower.(WatchtowerModel)
+	if !ok {
+		return s, nil
+	}
+
+	watchtower = watchtower.AttachCollectors(fleet, backend.CollectMemory, backend.CollectCPU, backend.CollectStorage, backend.CollectNetwork)
+	watchtower.width = s.width
+	watchtower.height = s.height
+	s.watchtower = watchtower
+
+	return s, watchtower.refreshCurrentFamilyCmd(fleet)
 }
