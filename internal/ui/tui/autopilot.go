@@ -6,6 +6,7 @@ import (
 	"github.com/charmbracelet/bubbles/textinput"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
+	"github.com/charmbracelet/x/ansi"
 )
 
 const (
@@ -88,28 +89,33 @@ func (m AutopilotModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 }
 
 func (m AutopilotModel) View() string {
-	if m.width == 0 || m.height == 0 {
-		m.width = 80
-		m.height = 24
+	width := m.width
+	if width == 0 {
+		width = 80
+	}
+	height := m.height
+	if height == 0 {
+		height = 24
 	}
 
-	contentHeight := m.height - 1
-	contentHeight = max(contentHeight, 6)
+	contentHeight := max(height-1, 1)
 
-	commandBar := m.renderCommandBar()
+	commandBar := ansi.Truncate(m.renderCommandBar(), width, "")
 	commandHeight := lipgloss.Height(commandBar)
-	panesHeight := contentHeight - commandHeight
-	panesHeight = max(panesHeight, 3)
+	panesHeight := max(contentHeight-commandHeight, 1)
 
-	plan := m.renderPane("PLAN", m.plan, panesHeight, m.focusedPane == autopilotPanePlan)
-	transcript := m.renderPane("TRANSCRIPT", m.transcript, panesHeight, m.focusedPane == autopilotPaneTranscript)
+	leftWidth := max(width/2, 1)
+	rightWidth := max(width-leftWidth, 1)
+
+	plan := m.renderPane("PLAN", m.plan, leftWidth, panesHeight, m.focusedPane == autopilotPanePlan)
+	transcript := m.renderPane("TRANSCRIPT", m.transcript, rightWidth, panesHeight, m.focusedPane == autopilotPaneTranscript)
 
 	panes := lipgloss.JoinHorizontal(lipgloss.Top, plan, transcript)
 	sections := []string{panes, commandBar}
 	if m.handoff != nil {
 		sections = append([]string{m.renderHandoff()}, sections...)
 	}
-	return lipgloss.JoinVertical(lipgloss.Left, sections...)
+	return constrainSurfaceContent(lipgloss.JoinVertical(lipgloss.Left, sections...), width, height-1)
 }
 
 func (m *AutopilotModel) cycleFocus() {
@@ -148,18 +154,18 @@ func (m AutopilotModel) renderCommandBar() string {
 	return bar
 }
 
-func (m AutopilotModel) renderPane(title string, lines []string, height int, active bool) string {
-	w := max(m.width/2, 10)
-
+func (m AutopilotModel) renderPane(title string, lines []string, width, height int, active bool) string {
 	style := panelStyle
 	if active {
 		style = activePanelStyle
 	}
 
-	innerWidth := w - style.GetHorizontalFrameSize() - style.GetHorizontalPadding()
-	innerHeight := height - style.GetVerticalFrameSize() - style.GetVerticalPadding()
-	innerWidth = max(innerWidth, 1)
-	innerHeight = max(innerHeight, 1)
+	frameWidth := style.GetHorizontalFrameSize()
+	frameHeight := style.GetVerticalFrameSize()
+	styleWidth := max(width-frameWidth, 0)
+	styleHeight := max(height-frameHeight, 0)
+	innerWidth := max(styleWidth-style.GetHorizontalPadding(), 1)
+	innerHeight := max(styleHeight-style.GetVerticalPadding()-1, 0)
 
 	header := lipgloss.NewStyle().Bold(true).Render(title)
 	body := strings.Join(lines, "\n")
@@ -169,5 +175,5 @@ func (m AutopilotModel) renderPane(title string, lines []string, height int, act
 
 	bodyStyle := lipgloss.NewStyle().Width(innerWidth).Height(innerHeight)
 	content := lipgloss.JoinVertical(lipgloss.Left, header, bodyStyle.Render(body))
-	return style.Width(w).Height(height).Render(content)
+	return style.Width(styleWidth).Height(styleHeight).Render(content)
 }

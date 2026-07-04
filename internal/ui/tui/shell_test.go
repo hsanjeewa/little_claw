@@ -190,6 +190,76 @@ func TestShell_AutopilotViewShowsModeLabel(t *testing.T) {
 	}
 }
 
+func TestShell_InitialAutopilotViewFitsFallbackViewport(t *testing.T) {
+	taskChan, logChan, hitlChan := testChannels()
+	shell := leaderSwitch(t, NewShell(taskChan, logChan, hitlChan, nil), 'a')
+
+	view := shell.View()
+	assertRenderedWithinBounds(t, view, 80, 24)
+
+	if !strings.Contains(view, "WATCHTOWER | Entire Inventory") && !strings.Contains(view, "AUTOPILOT | Entire Inventory") {
+		t.Fatalf("expected shell chrome to remain visible on initial Autopilot render, got:\n%s", view)
+	}
+	if !strings.Contains(view, "COMMAND") {
+		t.Fatalf("expected Autopilot command bar to remain visible on initial render, got:\n%s", view)
+	}
+}
+
+func TestShell_AutopilotViewRespectsWindowResizeBounds(t *testing.T) {
+	taskChan, logChan, hitlChan := testChannels()
+	shell := leaderSwitch(t, NewShell(taskChan, logChan, hitlChan, nil), 'a')
+
+	updated, _ := shell.Update(tea.WindowSizeMsg{Width: 48, Height: 8})
+	shell = updated.(Shell)
+
+	compact := shell.View()
+	assertRenderedWithinBounds(t, compact, 48, 8)
+
+	updated, _ = shell.Update(tea.WindowSizeMsg{Width: 72, Height: 10})
+	shell = updated.(Shell)
+
+	resized := shell.View()
+	assertRenderedWithinBounds(t, resized, 72, 10)
+	if !strings.Contains(resized, "PLAN") {
+		t.Fatalf("expected resized Autopilot view to keep rendering pane labels, got:\n%s", resized)
+	}
+}
+
+func TestShell_InitialCopilotViewFitsFallbackViewport(t *testing.T) {
+	taskChan, logChan, hitlChan := testChannels()
+	shell := leaderSwitch(t, NewShell(taskChan, logChan, hitlChan, nil), 'c')
+
+	view := shell.View()
+	assertRenderedWithinBounds(t, view, 80, 24)
+
+	if !strings.Contains(view, "COPILOT") {
+		t.Fatalf("expected shell chrome to remain visible on initial Copilot render, got:\n%s", view)
+	}
+	if !strings.Contains(view, "COMMAND") {
+		t.Fatalf("expected Copilot command bar to remain visible on initial render, got:\n%s", view)
+	}
+}
+
+func TestShell_CopilotViewRespectsWindowResizeBounds(t *testing.T) {
+	taskChan, logChan, hitlChan := testChannels()
+	shell := leaderSwitch(t, NewShell(taskChan, logChan, hitlChan, nil), 'c')
+
+	updated, _ := shell.Update(tea.WindowSizeMsg{Width: 48, Height: 8})
+	shell = updated.(Shell)
+
+	compact := shell.View()
+	assertRenderedWithinBounds(t, compact, 48, 8)
+
+	updated, _ = shell.Update(tea.WindowSizeMsg{Width: 72, Height: 10})
+	shell = updated.(Shell)
+
+	resized := shell.View()
+	assertRenderedWithinBounds(t, resized, 72, 10)
+	if !strings.Contains(resized, "TERMINAL") {
+		t.Fatalf("expected resized Copilot view to keep rendering pane labels, got:\n%s", resized)
+	}
+}
+
 func TestShell_CopilotQuitsOnQ(t *testing.T) {
 	taskChan, logChan, hitlChan := testChannels()
 	shell := NewShell(taskChan, logChan, hitlChan, nil)

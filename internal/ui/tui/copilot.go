@@ -6,6 +6,7 @@ import (
 	"github.com/charmbracelet/bubbles/textinput"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
+	"github.com/charmbracelet/x/ansi"
 )
 
 const (
@@ -92,30 +93,29 @@ func (m CopilotModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 }
 
 func (m CopilotModel) View() string {
-	if m.width == 0 || m.height == 0 {
-		m.width = 80
-		m.height = 24
+	width := m.width
+	if width == 0 {
+		width = 80
+	}
+	height := m.height
+	if height == 0 {
+		height = 24
 	}
 
-	contentHeight := m.height - 1
-	contentHeight = max(contentHeight, 6)
+	contentHeight := max(height-1, 1)
 
-	commandBar := m.renderCommandBar()
+	commandBar := ansi.Truncate(m.renderCommandBar(), width, "")
 	commandHeight := lipgloss.Height(commandBar)
-	panesHeight := contentHeight - commandHeight
-	panesHeight = max(panesHeight, 3)
+	panesHeight := max(contentHeight-commandHeight, 1)
 
-	terminalWidth := m.width * 2 / 3
-	terminalWidth = max(terminalWidth, 10)
-	sideWidth := m.width - terminalWidth
-	sideWidth = max(sideWidth, 10)
+	terminalWidth := max(width*2/3, 1)
+	sideWidth := max(width-terminalWidth, 1)
 
-	sidePaneHeight := panesHeight / 2
-	sidePaneHeight = max(sidePaneHeight, 2)
+	sidePaneHeight := max(panesHeight/2, 1)
 
 	terminal := m.renderPane("TERMINAL", m.terminal, terminalWidth, panesHeight, m.focusedPane == copilotPaneTerminal)
 	advisory := m.renderPane("ADVISORY", m.advisory, sideWidth, sidePaneHeight, m.focusedPane == copilotPaneAdvisory)
-	guidance := m.renderPane("GUIDANCE", m.guidance, sideWidth, panesHeight-sidePaneHeight, m.focusedPane == copilotPaneGuidance)
+	guidance := m.renderPane("GUIDANCE", m.guidance, sideWidth, max(panesHeight-sidePaneHeight, 1), m.focusedPane == copilotPaneGuidance)
 
 	sideStack := lipgloss.JoinVertical(lipgloss.Left, advisory, guidance)
 	panes := lipgloss.JoinHorizontal(lipgloss.Top, terminal, sideStack)
@@ -123,7 +123,7 @@ func (m CopilotModel) View() string {
 	if m.handoff != nil {
 		sections = append([]string{m.renderHandoff()}, sections...)
 	}
-	return lipgloss.JoinVertical(lipgloss.Left, sections...)
+	return constrainSurfaceContent(lipgloss.JoinVertical(lipgloss.Left, sections...), width, height-1)
 }
 
 func (m *CopilotModel) cycleFocus() {
@@ -168,10 +168,12 @@ func (m CopilotModel) renderPane(title string, lines []string, width, height int
 		style = activePanelStyle
 	}
 
-	innerWidth := width - style.GetHorizontalFrameSize() - style.GetHorizontalPadding()
-	innerHeight := height - style.GetVerticalFrameSize() - style.GetVerticalPadding()
-	innerWidth = max(innerWidth, 1)
-	innerHeight = max(innerHeight, 1)
+	frameWidth := style.GetHorizontalFrameSize()
+	frameHeight := style.GetVerticalFrameSize()
+	styleWidth := max(width-frameWidth, 0)
+	styleHeight := max(height-frameHeight, 0)
+	innerWidth := max(styleWidth-style.GetHorizontalPadding(), 1)
+	innerHeight := max(styleHeight-style.GetVerticalPadding()-1, 0)
 
 	header := lipgloss.NewStyle().Bold(true).Render(title)
 	body := strings.Join(lines, "\n")
@@ -181,5 +183,5 @@ func (m CopilotModel) renderPane(title string, lines []string, width, height int
 
 	bodyStyle := lipgloss.NewStyle().Width(innerWidth).Height(innerHeight)
 	content := lipgloss.JoinVertical(lipgloss.Left, header, bodyStyle.Render(body))
-	return style.Width(width).Height(height).Render(content)
+	return style.Width(styleWidth).Height(styleHeight).Render(content)
 }
