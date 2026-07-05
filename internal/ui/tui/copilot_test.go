@@ -5,6 +5,8 @@ import (
 	"testing"
 
 	tea "github.com/charmbracelet/bubbletea"
+
+	"github.com/devops/agent/internal/domain/agent"
 )
 
 func TestCopilotModel_ViewRendersCommandBarAndPanes(t *testing.T) {
@@ -67,5 +69,41 @@ func TestCopilotModel_FocusCyclesOnTab(t *testing.T) {
 
 	if m.focusedPane == initialFocus {
 		t.Fatalf("expected focus to change after Tab, still at %d", m.focusedPane)
+	}
+}
+
+func TestCopilotModel_HandoffCompactViewFitsBoundsAndShowsLabels(t *testing.T) {
+	m := NewCopilotModel()
+	m = m.ApplyWatchtowerEscalation(WatchtowerEscalationPayload{
+		Target:       ModeCopilot,
+		MetricFamily: agent.MetricFamilyMemory,
+		SelectedHost: "db-master",
+		Observation:  "Memory 85.0% used",
+	})
+	updated, _ := m.Update(tea.WindowSizeMsg{Width: 80, Height: 21})
+	m = updated.(CopilotModel)
+
+	view := m.View()
+	assertRenderedWithinBounds(t, view, 80, 20)
+	for _, label := range []string{"WATCHTOWER HANDOFF", "db-master", "TERMINAL", "ADVISORY", "GUIDANCE", "COMMAND"} {
+		if !strings.Contains(view, label) {
+			t.Fatalf("expected compact escalated Copilot view to contain %q, got:\n%s", label, view)
+		}
+	}
+}
+
+func TestCopilotModel_PaneLabelsVisibleAfterCompactResize(t *testing.T) {
+	m := NewCopilotModel()
+	updated, _ := m.Update(tea.WindowSizeMsg{Width: 80, Height: 24})
+	m = updated.(CopilotModel)
+	updated, _ = m.Update(tea.WindowSizeMsg{Width: 80, Height: 21})
+	m = updated.(CopilotModel)
+
+	view := m.View()
+	assertRenderedWithinBounds(t, view, 80, 20)
+	for _, label := range []string{"TERMINAL", "ADVISORY", "GUIDANCE", "COMMAND"} {
+		if !strings.Contains(view, label) {
+			t.Fatalf("expected resized compact Copilot view to contain %q, got:\n%s", label, view)
+		}
 	}
 }

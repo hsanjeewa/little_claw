@@ -100,9 +100,15 @@ func (m AutopilotModel) View() string {
 
 	contentHeight := max(height-1, 1)
 
+	handoff := ""
+	if m.handoff != nil {
+		handoff = m.renderHandoff()
+	}
+	handoffHeight := lipgloss.Height(handoff)
+
 	commandBar := ansi.Truncate(m.renderCommandBar(), width, "")
 	commandHeight := lipgloss.Height(commandBar)
-	panesHeight := max(contentHeight-commandHeight, 1)
+	panesHeight := max(contentHeight-handoffHeight-commandHeight, 1)
 
 	leftWidth := max(width/2, 1)
 	rightWidth := max(width-leftWidth, 1)
@@ -112,8 +118,8 @@ func (m AutopilotModel) View() string {
 
 	panes := lipgloss.JoinHorizontal(lipgloss.Top, plan, transcript)
 	sections := []string{panes, commandBar}
-	if m.handoff != nil {
-		sections = append([]string{m.renderHandoff()}, sections...)
+	if handoff != "" {
+		sections = append([]string{handoff}, sections...)
 	}
 	return constrainSurfaceContent(lipgloss.JoinVertical(lipgloss.Left, sections...), width, height-1)
 }

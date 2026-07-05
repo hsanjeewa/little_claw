@@ -5,6 +5,8 @@ import (
 	"testing"
 
 	tea "github.com/charmbracelet/bubbletea"
+
+	"github.com/devops/agent/internal/domain/agent"
 )
 
 func TestAutopilotModel_ViewRendersCommandBarAndPanes(t *testing.T) {
@@ -50,6 +52,42 @@ func TestAutopilotModel_StoresWindowSize(t *testing.T) {
 	}
 	if m.height != 24 {
 		t.Fatalf("expected height 24, got %d", m.height)
+	}
+}
+
+func TestAutopilotModel_HandoffCompactViewFitsBoundsAndShowsLabels(t *testing.T) {
+	m := NewAutopilotModel()
+	m = m.ApplyWatchtowerEscalation(WatchtowerEscalationPayload{
+		Target:       ModeAutopilot,
+		MetricFamily: agent.MetricFamilyMemory,
+		SelectedHost: "db-master",
+		Observation:  "Memory 85.0% used",
+	})
+	updated, _ := m.Update(tea.WindowSizeMsg{Width: 80, Height: 15})
+	m = updated.(AutopilotModel)
+
+	view := m.View()
+	assertRenderedWithinBounds(t, view, 80, 14)
+	for _, label := range []string{"WATCHTOWER HANDOFF", "db-master", "PLAN", "TRANSCRIPT", "COMMAND"} {
+		if !strings.Contains(view, label) {
+			t.Fatalf("expected compact escalated Autopilot view to contain %q, got:\n%s", label, view)
+		}
+	}
+}
+
+func TestAutopilotModel_PaneLabelsVisibleAfterCompactResize(t *testing.T) {
+	m := NewAutopilotModel()
+	updated, _ := m.Update(tea.WindowSizeMsg{Width: 80, Height: 24})
+	m = updated.(AutopilotModel)
+	updated, _ = m.Update(tea.WindowSizeMsg{Width: 80, Height: 15})
+	m = updated.(AutopilotModel)
+
+	view := m.View()
+	assertRenderedWithinBounds(t, view, 80, 14)
+	for _, label := range []string{"PLAN", "TRANSCRIPT", "COMMAND"} {
+		if !strings.Contains(view, label) {
+			t.Fatalf("expected resized compact Autopilot view to contain %q, got:\n%s", label, view)
+		}
 	}
 }
 
