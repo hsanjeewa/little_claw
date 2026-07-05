@@ -2,13 +2,14 @@
 
 ## Objective
 
-Deliver a tabbed TUI shell with three persistent modes, using Watchtower as the first functional vertical slice and structural placeholders for Autopilot and Copilot.
+Deliver a tabbed TUI shell with three persistent modes, using the redesigned Watchtower as the first fully realized product surface and structural placeholders for Autopilot and Copilot.
 
 ## Delivery Strategy
 
 - Build the shell and shared seams first
 - Validate cross-mode state, scope, and navigation early
-- Implement Watchtower memory path end-to-end before CPU and agent mode behavior
+- Implement the redesigned Watchtower architecture before polishing family-specific presentation details
+- Treat Watchtower as a cohesive multi-family release target, not a memory-first tracer bullet
 - Keep agent modes structurally real but behaviorally shallow until shell patterns settle
 
 ## Phase 1: Shell Foundation
@@ -77,20 +78,57 @@ Deliver a tabbed TUI shell with three persistent modes, using Watchtower as the 
 - focus indicators are clear
 - no stdout/stderr corruption of Bubble Tea UI
 
-## Phase 3: Watchtower Data Pipeline (Memory)
+## Phase 3: Watchtower Redesign Foundation
 
 ### Outcomes
 
-- centralized SSH polling returns normalized memory snapshots
-- refresh cycle supports per-host partial success
-- freshness metadata is preserved
+- Watchtower state model supports three Watchtower Views
+- global Selected Host behavior is explicit
+- drill history, per-view state restore, and Target Scope integration are modeled before presentation polish
 
 ### Work
 
-1. Define Watchtower snapshot domain model
-2. Define collection interface in domain layer
-3. Implement infrastructure collector using SSH
-4. Normalize memory metrics into stable snapshot shape
+1. Refactor Watchtower state model to include:
+   - current Watchtower View
+   - global Selected Host
+   - per-view remembered state
+   - Watchtower View History
+2. Wire direct view switching and local back behavior:
+   - `g` for Fleet Aggregate
+   - `m` for Fleet Matrix
+   - `d` for Host Detail
+   - `b` for Watchtower back
+3. Honor shell Target Scope consistently across all Watchtower Views
+4. Define focus contracts for:
+   - focused aggregate module
+   - focused matrix card
+   - focused host-detail module
+5. Define size/degradation policy for small terminals
+
+### Validation
+
+- tests for Watchtower state transitions and back behavior
+- tests for scope change re-homing of Selected Host
+- resize/layout tests cover no-overflow degradation rules
+
+## Phase 4: Watchtower Data and Trend Pipeline
+
+### Outcomes
+
+- centralized SSH polling returns normalized Metrics Snapshots for all major metric families
+- refresh cycle supports per-host partial success
+- freshness metadata and short Trend Window retention are preserved
+
+### Work
+
+1. Confirm or extend Watchtower snapshot domain model for:
+   - CPU
+   - Memory
+   - Disk
+   - Network
+2. Define or refine collection interfaces in the domain layer
+3. Implement or extend infrastructure collectors using SSH
+4. Normalize all required families into stable snapshot shapes
 5. Add refresh-cycle orchestration:
    - interval
    - concurrency control
@@ -99,50 +137,75 @@ Deliver a tabbed TUI shell with three persistent modes, using Watchtower as the 
    - collected at
    - age
    - host status
+7. Add bounded in-memory Trend Window retention for trend strips
 
 ### Validation
 
-- tests for snapshot normalization
+- tests for snapshot normalization across all four families
 - tests for partial success behavior
+- tests for freshness and trend retention behavior
 - diagnostics clean on new domain/infrastructure files
 
-## Phase 4: Watchtower UI (Memory)
+## Phase 5: Watchtower View Implementation
 
 ### Outcomes
 
-- Fleet Matrix displays memory across current Target Scope
-- host selection drills into Host Detail
-- failures and stale data are visible
+- Fleet Aggregate, Fleet Matrix, and Host Detail all exist with the new interaction model
+- cross-view drill flow and keyboard behavior feel coherent
+- severity, missing, and stale states are legible across the redesigned surface
 
 ### Work
 
-1. Implement Fleet Matrix memory view
-2. Implement host selection/focus model
-3. Implement Host Detail memory view
-4. Add back navigation to Fleet Matrix
-5. Surface freshness and host failure state in both views
-6. Honor shell Target Scope live
+1. Implement Fleet Aggregate:
+   - compressed Aggregate Bundles for CPU/memory/disk/network
+   - focused module behavior
+   - drill into Fleet Matrix by Enter or family hotkey
+2. Implement Fleet Matrix:
+   - one Metric Family at a time
+   - paginated host cards
+   - 2D spatial card navigation
+   - edge-triggered page turns
+   - explicit `[` / `]` paging
+3. Implement Host Detail:
+   - bar-first multi-family dashboard
+   - focused module behavior
+   - `[` / `]` host switching
+   - drill into Fleet Matrix by focused family or hotkey
+4. Implement Watchtower chrome:
+   - view bar/header
+   - Selected Host indicator
+   - contextual footer hotkeys
+5. Surface status treatment:
+   - healthy/elevated/critical
+   - missing versus stale
+   - selective badges in major dashboards
+   - explicit badges in Fleet Matrix cards
+6. Implement one-screen completeness and fallback compression rules
 
 ### Validation
 
 - manual verification with Entire Inventory and Selected Hosts
 - resize/layout tests for Bubble Tea model
 - no horizontal overflow
+- keyboard navigation is spatial where layouts are spatial
+- drill flow preserves state and selected-host continuity
 
-## Phase 5: Watchtower Escalation Hooks
+## Phase 6: Watchtower Escalation Hooks
 
 ### Outcomes
 
-- Watchtower can package context for future Copilot/Autopilot handoff
+- Watchtower can package redesigned context for future Copilot/Autopilot handoff
 - full execution handoff may remain stubbed initially
 
 ### Work
 
-1. Define escalation payload shape:
-   - source mode
-   - host/scope
+1. Define escalation payload shape for redesigned Watchtower:
+   - source Watchtower View
+   - selected host
+   - target scope
    - metric family
    - recent observations
+   - freshness context
 2. Add UI affordances for escalate to Copilot / Autopilot
 3. Wire placeholder handoff targets
 
@@ -150,24 +213,7 @@ Deliver a tabbed TUI shell with three persistent modes, using Watchtower as the 
 
 - selected context is preserved in hook payload
 - shell navigation to target mode works predictably
-
-## Phase 6: CPU Follow-Up
-
-### Outcomes
-
-- second Metric Family proves Watchtower extensibility
-
-### Work
-
-1. Extend snapshot model for CPU
-2. Add CPU collection/normalization
-3. Add Fleet Matrix family switching
-4. Add CPU Host Detail presentation
-
-### Validation
-
-- memory behavior remains stable
-- family switching updates hotkeys and rendering cleanly
+- redesigned Watchtower state survives escalation affordance usage
 
 ## Engineering Constraints
 
@@ -176,6 +222,19 @@ Deliver a tabbed TUI shell with three persistent modes, using Watchtower as the 
 - Keep domain layer free of external dependencies
 - Wrap errors with context
 - Prefer test-first changes for domain logic and UI model behavior
+- Align implementation with `docs/plans/watchtower-redesign-spec.md`
+
+## Release Readiness Gate
+
+The redesigned Watchtower is not release-ready until:
+
+- CPU, memory, disk, and network are all present across:
+  - Host Detail
+  - Fleet Aggregate
+  - Fleet Matrix
+- cross-view family coverage is complete
+- view-aware completeness is acceptable, but missing families are not
+- the redesigned keyboard model, freshness model, and trend model behave coherently across the full Watchtower surface
 
 ## Risks
 

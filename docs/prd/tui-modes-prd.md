@@ -8,7 +8,7 @@ Expand the DevOps Agent TUI into a shell with three independent modes presented 
 2. **Autopilot** — agent-led execution with approvals
 3. **Copilot** — human-led terminal workflow with advisory assistance
 
-The shell should feel similar in spirit to Zellij for navigation and contextual hotkeys. Watchtower is the first mode to receive end-to-end functionality; Autopilot and Copilot ship first as structural placeholders.
+The shell should feel similar in spirit to Zellij for navigation and contextual hotkeys. Watchtower is the first mode to receive end-to-end functionality; Autopilot and Copilot ship first as structural placeholders. The current Watchtower target is the redesigned three-View experience defined by the Watchtower redesign ADRs and spec.
 
 ## Problem
 
@@ -25,7 +25,7 @@ Without a shell-level model, these capabilities risk becoming disconnected featu
 - Introduce a shell with three long-lived independent modes
 - Preserve mode state while switching tabs
 - Add shell-level Target Scope shared across modes
-- Ship a useful Watchtower first slice with real metric collection
+- Ship a cohesive redesigned Watchtower with real metric collection and cross-view drill flow
 - Establish Autopilot and Copilot layout/focus/input contracts early
 - Support contextual hotkeys and slash commands where appropriate
 
@@ -71,31 +71,56 @@ Purpose: monitoring mode for fleet and host health.
 
 #### Views
 
+- **Fleet Aggregate**
+  - default landing Watchtower View
+  - shows all major metric families together using fleet-wide **Aggregate Bundles**
+  - acts as the primary triage surface
 - **Fleet Matrix**
   - compares one **Metric Family** across the current Target Scope
-  - initial metric family sequence:
-    1. Memory
-    2. CPU
+  - renders scoped hosts as paginated cards
+  - remains the only Watchtower View with an active Metric Family selector
 - **Host Detail**
-  - deep single-host view similar in spirit to `btop`
+  - deep single-host dashboard with a strong btop homage
+  - shows CPU, memory, disk, and network simultaneously
 
 #### Navigation
 
-- Default landing view: Fleet Matrix
-- Selecting a host drills into Host Detail
-- Back action returns to Fleet Matrix
+- Direct Watchtower View hotkeys:
+  - `g` → Fleet Aggregate
+  - `m` → Fleet Matrix
+  - `d` → Host Detail
+- Watchtower maintains a short internal drill history with `b` as local back action
+- Fleet Aggregate drills into Fleet Matrix by focused module or direct family hotkey
+- Fleet Matrix focus determines the global **Selected Host**
+- Host Detail can drill into Fleet Matrix for the focused family and switch scoped hosts directly with `[` / `]`
 
 #### Data Model
 
 - Metrics are collected through **central SSH polling**
 - Data is represented as **Metrics Snapshots**
+- Watchtower retains a short in-memory **Trend Window** for trend visuals
 - Each snapshot shows **Freshness**:
   - timestamp
   - host collection status
   - age
+- Watchtower distinguishes:
+  - healthy
+  - elevated
+  - critical
+  - stale
+  - missing
 - Refresh Cycles use **partial success**
   - successful hosts render normally
   - failed/unreachable hosts remain visible as failed
+
+#### Presentation Rules
+
+- Palette is severity-driven rather than decorative
+- Thresholds are fixed built-in thresholds per Metric Family in v1
+- Host Detail and Fleet Aggregate use bar-first modules with supporting numbers
+- Fleet Matrix uses mini bar-first cards with explicit status badges
+- Host Detail prefers one-screen completeness and degrades density before scrolling
+- Disk and network may collapse earlier than CPU and memory in smaller terminals
 
 #### Escalation
 
@@ -104,7 +129,15 @@ Watchtower supports **explicit escalation** into:
 - Copilot Session
 - Autopilot Run
 
-Escalation carries current context such as host, scope, metric family, and recent observations.
+Escalation carries current context such as selected host, scope, metric family, and recent observations.
+
+#### Release Gate
+
+- The redesigned Watchtower is not release-ready until **CPU**, **memory**, **disk**, and **network** are all present across:
+  - Host Detail
+  - Fleet Aggregate
+  - Fleet Matrix
+- Release requires complete cross-view family coverage, but not identical richness in every Watchtower View
 
 ### 2. Autopilot
 
@@ -202,6 +235,7 @@ Copilot does not take control by default.
 1. Build shell skeleton for all three modes
 2. Ship structural placeholders for Autopilot and Copilot
 3. Prioritize Watchtower as first real end-to-end feature
+4. Treat the redesigned Watchtower as a cohesive multi-family surface rather than a memory-first tracer bullet
 
 ### Placeholder Scope
 
@@ -220,9 +254,11 @@ Copilot does not take control by default.
 
 - Operator can switch among three persistent modes in one shell
 - Shell Target Scope is visible and usable across modes
-- Watchtower displays real memory metrics for entire inventory or selected hosts
-- Watchtower can drill from Fleet Matrix to Host Detail
+- Watchtower exposes Fleet Aggregate, Fleet Matrix, and Host Detail as coherent Watchtower Views
+- Watchtower displays CPU, memory, disk, and network across the redesigned surface
+- Watchtower supports drill flow across Fleet Aggregate, Fleet Matrix, and Host Detail
 - Watchtower surfaces freshness and partial host failures clearly
+- Watchtower distinguishes missing versus stale states and preserves selected-host continuity across views
 - Shell exposes contextual hotkeys and mode status badges
 - Autopilot and Copilot placeholders validate layout and focus model
 
@@ -252,3 +288,6 @@ Copilot does not take control by default.
 - `docs/adr/0021-active-work-scope-change-behavior.md`
 - `docs/adr/0022-initial-delivery-sequence.md`
 - `docs/adr/0023-watchtower-initial-metric-sequencing.md`
+- `docs/adr/0024-watchtower-view-model.md`
+- `docs/adr/0025-watchtower-redesign-release-gate.md`
+- `docs/plans/watchtower-redesign-spec.md`

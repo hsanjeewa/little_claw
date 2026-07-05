@@ -12,9 +12,29 @@ _Avoid_: Tab, screen, page
 The monitoring mode focused on fleet and server health visibility.
 _Avoid_: Dashboard, metrics page
 
+**Watchtower View**:
+A switchable presentation within Watchtower, such as Host Detail, Fleet Aggregate, or Fleet Matrix.
+_Avoid_: Mode, tab, page
+
+**Watchtower View History**:
+The short internal navigation trail that lets an operator return to the previous Watchtower View in a drill flow.
+_Avoid_: Browser history, shell back stack, global undo
+
 **Fleet Matrix**:
 The Watchtower view that compares one selected metric across the full inventory.
 _Avoid_: Overview table, summary grid
+
+**Fleet Aggregate**:
+The Watchtower view that summarizes fleet-wide resource health using the same visual language as Host Detail.
+_Avoid_: Overview dashboard, rolled-up btop, global summary
+
+**Aggregate Bundle**:
+A Watchtower summary that combines a fleet-level aggregate with outlier visibility, such as average, peak or worst host, and affected host count.
+_Avoid_: Single stat, plain rollup, one-number summary
+
+**Host Card Pagination**:
+The Fleet Matrix interaction that moves through additional per-host cards when the visible terminal space cannot show the full selected host set at once.
+_Avoid_: Metric paging, tab flip, scrolling the whole Watchtower
 
 **Metric Family**:
 A switchable category of related resource measurements, such as CPU, memory, disk, or network.
@@ -44,9 +64,25 @@ _Avoid_: Cluster, fleet list
 A normalized point-in-time reading of server health and resource usage collected for display in Watchtower.
 _Avoid_: Raw stats, telemetry blob
 
+**Selected Host**:
+The globally active host within Watchtower that anchors Host Detail and remains stable while the operator switches between Watchtower Views.
+_Avoid_: Cursor host, temporary card focus, local row selection
+
 **Freshness**:
 The visible age and collection status of a Metrics Snapshot.
 _Avoid_: Cache health, polling lag
+
+**Severity Palette**:
+The Watchtower color system where visual intensity communicates operational state such as healthy, elevated, or critical pressure rather than decoration alone.
+_Avoid_: Random accents, purely cosmetic theme, rainbow styling
+
+**Severity Threshold**:
+An explicit per-Metric-Family boundary that determines when Watchtower escalates visual state from healthy to elevated or critical.
+_Avoid_: Hidden heuristics, one universal cutoff, decorative coloring
+
+**Trend Window**:
+A small rolling in-memory history of recent Metrics Snapshots used to render short Watchtower trend visuals.
+_Avoid_: Full telemetry store, single snapshot, unbounded history
 
 **Run**:
 An objective-driven Autopilot session that owns its plan, evidence, approvals, actions, and resumable history.
