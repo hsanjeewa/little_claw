@@ -61,7 +61,7 @@ watchtower_backend = "simulator"
 ```
 
 ### Step 4: How to use the TUI
-When the agent starts, you will land in the new shell-based TUI. It currently has three top-level modes:
+When the agent starts, you will land in the shell-based TUI. It has three top-level modes:
 
 - **Watchtower** — the monitoring view
 - **Autopilot** — the agent-led execution workspace
@@ -77,21 +77,55 @@ little_claw uses a **leader key** inspired by terminal multiplexers:
 
 If you press `Ctrl+a`, the shell will briefly show that it is waiting for the next mode key.
 
-#### Basic Watchtower controls
-Watchtower opens first by default and focuses on server health across your inventory.
+#### Watchtower redesign model
+Watchtower is the monitoring mode and is being shaped around three internal **Watchtower Views**:
 
-- `j` / `k` — move between hosts in the fleet matrix
-- `Enter` — open **Host Detail** for the selected host
-- `b` — go back from Host Detail to the fleet matrix
-- `1` — switch to the **Memory** metric family
-- `2` — switch to the **CPU** metric family
-- `3` — switch to the **Storage** metric family
-- `4` — switch to the **Network** metric family
-- `r` — refresh the current metric family
+- **Fleet Aggregate** — a fleet-wide summary and triage surface
+- **Fleet Matrix** — one metric family across scoped hosts as paginated cards
+- **Host Detail** — a dense single-host dashboard with a strong `btop` homage
+
+The redesign target is:
+
+- direct Watchtower View switching with `g`, `m`, and `d`
+- `b` for local Watchtower back-navigation through drill flow
+- `[` / `]` for previous/next host in **Host Detail**
+- `[` / `]` for previous/next page in **Fleet Matrix**
+- a persistent fleet rail across all Watchtower Views
+- compact Watchtower chrome that degrades by width before truncating core data
+- CPU-led wide layouts for **Fleet Aggregate** and **Host Detail**, with denser supporting memory, disk, and network regions
+- all four major metric families present across the redesigned surface:
+  - CPU
+  - Memory
+  - Disk
+  - Network
+
+For the detailed interaction and release rules, see:
+
+- `docs/plans/watchtower-redesign-spec.md`
+- `docs/adr/0024-watchtower-view-model.md`
+- `docs/adr/0025-watchtower-redesign-release-gate.md`
+
+#### Current shell and Watchtower controls
+Watchtower opens first by default and remains the main monitoring workspace while the redesign evolves.
+
+- `j` / `k`
+  - **Fleet Aggregate**: move focus across aggregate modules
+  - **Fleet Matrix**: move the selected host within the current scope
+  - **Host Detail**: move the focused metric module
+- `Enter`
+  - **Fleet Aggregate**: drill into **Fleet Matrix** for the focused family
+  - **Fleet Matrix**: drill into **Host Detail** for the selected host
+  - **Host Detail**: drill back into **Fleet Matrix** for the focused family
+- `b` / `Esc` — step back through local Watchtower drill history
+- `1` / `2` / `3` / `4` — switch to **Memory / CPU / Storage / Network**
+- `[` / `]`
+  - **Fleet Matrix**: move to the previous/next host page
+  - **Host Detail**: move to the previous/next scoped host
+- `r` — refresh the active visible metric family
 - `a` — escalate the current Watchtower context into **Autopilot**
 - `c` — escalate the current Watchtower context into **Copilot**
 
-The simulator fleet currently exposes at least 4 hosts and supports all four Watchtower metric families. Repeated refreshes will change the simulated values over time so you can review the UI with moving data.
+The simulator fleet currently exposes at least 4 hosts and bootstraps all four Watchtower metric families immediately when attached. Repeated refreshes will change the simulated values over time so you can review the UI with moving data.
 
 #### Basic Autopilot and Copilot controls
 Autopilot and Copilot are currently interactive skeletons that help you learn the layout and flow:
