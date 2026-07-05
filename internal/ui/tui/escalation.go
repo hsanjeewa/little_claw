@@ -12,6 +12,7 @@ type WatchtowerEscalationPayload struct {
 	Scope        TargetScope
 	SelectedHost string
 	Observation  string
+	ViewMode     watchtowerViewMode
 }
 
 func (p WatchtowerEscalationPayload) Summary() string {

@@ -130,6 +130,70 @@ func TestShell_AttachesSimulatorWithLeaderKey(t *testing.T) {
 	}
 }
 
+func TestShell_AttachesSimulatorBootstrapsAllWatchtowerFamilies(t *testing.T) {
+	taskChan, logChan, hitlChan := testChannels()
+	shell := leaderSwitch(t, NewShell(taskChan, logChan, hitlChan, nil), 'a')
+
+	updated, _ := shell.Update(tea.KeyMsg{Type: tea.KeyCtrlA})
+	shell = updated.(Shell)
+	updated, cmd := shell.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'z'}})
+	shell = updated.(Shell)
+	if cmd == nil {
+		t.Fatal("expected simulator attach bootstrap command")
+	}
+
+	updated, _ = shell.Update(cmd())
+	shell = updated.(Shell)
+
+	watchtower, ok := shell.watchtower.(WatchtowerModel)
+	if !ok {
+		t.Fatal("expected watchtower child model")
+	}
+
+	if len(watchtower.memorySnapshots) == 0 {
+		t.Fatal("expected simulator attach to bootstrap memory snapshots")
+	}
+	if len(watchtower.cpuSnapshots) == 0 {
+		t.Fatal("expected simulator attach to bootstrap cpu snapshots")
+	}
+	if len(watchtower.storageSnapshots) == 0 {
+		t.Fatal("expected simulator attach to bootstrap storage snapshots")
+	}
+	if len(watchtower.networkSnapshots) == 0 {
+		t.Fatal("expected simulator attach to bootstrap network snapshots")
+	}
+
+	updated, _ = shell.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'2'}})
+	shell = updated.(Shell)
+	watchtower, ok = shell.watchtower.(WatchtowerModel)
+	if !ok {
+		t.Fatal("expected watchtower child model after cpu switch")
+	}
+	if !strings.Contains(watchtower.renderCPUAggregateBundle(), "%") {
+		t.Fatalf("expected bootstrapped cpu simulator data in cpu aggregate bundle, got:\n%s", watchtower.renderCPUAggregateBundle())
+	}
+
+	updated, _ = shell.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'3'}})
+	shell = updated.(Shell)
+	watchtower, ok = shell.watchtower.(WatchtowerModel)
+	if !ok {
+		t.Fatal("expected watchtower child model after storage switch")
+	}
+	if !strings.Contains(watchtower.renderStorageAggregateBundle(), "GiB") {
+		t.Fatalf("expected bootstrapped storage simulator data in storage aggregate bundle, got:\n%s", watchtower.renderStorageAggregateBundle())
+	}
+
+	updated, _ = shell.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'4'}})
+	shell = updated.(Shell)
+	watchtower, ok = shell.watchtower.(WatchtowerModel)
+	if !ok {
+		t.Fatal("expected watchtower child model after network switch")
+	}
+	if !strings.Contains(watchtower.renderNetworkAggregateBundle(), "/s") {
+		t.Fatalf("expected bootstrapped network simulator data in network aggregate bundle, got:\n%s", watchtower.renderNetworkAggregateBundle())
+	}
+}
+
 func TestShell_LeaderKeyShowsPendingStateUntilModeKey(t *testing.T) {
 	taskChan, logChan, hitlChan := testChannels()
 	shell := NewShell(taskChan, logChan, hitlChan, nil)
@@ -167,7 +231,7 @@ func TestShell_WatchtowerViewRendersFleetMatrix(t *testing.T) {
 	shell = updated.(Shell)
 
 	view := shell.View()
-	if (!strings.Contains(view, "HOSTS") && !strings.Contains(view, "FLEET") && !strings.Contains(view, "DETAIL")) || !strings.Contains(view, "db-master") {
+	if (!strings.Contains(view, "HOSTS") && !strings.Contains(view, "FLEET") && !strings.Contains(view, "DETAIL") && !strings.Contains(view, "AGGREGATE")) || !strings.Contains(view, "db-master") {
 		t.Fatalf("expected Watchtower shell view to render dashboard panes, got:\n%s", view)
 	}
 }
@@ -367,6 +431,74 @@ func TestShell_WatchtowerEscalatesToCopilotWithContext(t *testing.T) {
 	view := shell.View()
 	if !strings.Contains(view, "WATCHTOWER HANDOFF") || !strings.Contains(view, "db-master") || !strings.Contains(view, "MEMORY") {
 		t.Fatalf("expected Copilot to render Watchtower handoff context, got:\n%s", view)
+	}
+}
+
+func TestShell_WatchtowerEscalatesToAutopilotCompactHeight(t *testing.T) {
+	taskChan, logChan, hitlChan := testChannels()
+	shell := NewShellWithInventory(taskChan, logChan, hitlChan, nil, testInventory())
+
+	updated, _ := shell.Update(tea.WindowSizeMsg{Width: 80, Height: 15})
+	shell = updated.(Shell)
+	updated, _ = shell.Update(watchtowerSnapshotsMsg{snapshots: testMemorySnapshots()})
+	shell = updated.(Shell)
+
+	_, cmd := shell.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'a'}})
+	if cmd == nil {
+		t.Fatal("expected escalation command to Autopilot")
+	}
+
+	msg := cmd()
+	updated, _ = shell.Update(msg)
+	shell = updated.(Shell)
+
+	updated, _ = shell.Update(tea.WindowSizeMsg{Width: 80, Height: 15})
+	shell = updated.(Shell)
+
+	if shell.ActiveMode() != ModeAutopilot {
+		t.Fatalf("expected shell to switch to Autopilot, got %v", shell.ActiveMode())
+	}
+
+	view := shell.View()
+	assertRenderedWithinBounds(t, view, 80, 15)
+	for _, label := range []string{"WATCHTOWER HANDOFF", "db-master", "MEMORY", "PLAN", "TRANSCRIPT", "COMMAND"} {
+		if !strings.Contains(view, label) {
+			t.Fatalf("expected compact escalated Autopilot shell view to contain %q, got:\n%s", label, view)
+		}
+	}
+}
+
+func TestShell_WatchtowerEscalatesToCopilotCompactHeight(t *testing.T) {
+	taskChan, logChan, hitlChan := testChannels()
+	shell := NewShellWithInventory(taskChan, logChan, hitlChan, nil, testInventory())
+
+	updated, _ := shell.Update(tea.WindowSizeMsg{Width: 80, Height: 21})
+	shell = updated.(Shell)
+	updated, _ = shell.Update(watchtowerSnapshotsMsg{snapshots: testMemorySnapshots()})
+	shell = updated.(Shell)
+
+	_, cmd := shell.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'c'}})
+	if cmd == nil {
+		t.Fatal("expected escalation command to Copilot")
+	}
+
+	msg := cmd()
+	updated, _ = shell.Update(msg)
+	shell = updated.(Shell)
+
+	updated, _ = shell.Update(tea.WindowSizeMsg{Width: 80, Height: 21})
+	shell = updated.(Shell)
+
+	if shell.ActiveMode() != ModeCopilot {
+		t.Fatalf("expected shell to switch to Copilot, got %v", shell.ActiveMode())
+	}
+
+	view := shell.View()
+	assertRenderedWithinBounds(t, view, 80, 21)
+	for _, label := range []string{"WATCHTOWER HANDOFF", "db-master", "MEMORY", "TERMINAL", "ADVISORY", "GUIDANCE", "COMMAND"} {
+		if !strings.Contains(view, label) {
+			t.Fatalf("expected compact escalated Copilot shell view to contain %q, got:\n%s", label, view)
+		}
 	}
 }
 

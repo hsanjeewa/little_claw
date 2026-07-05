@@ -1,6 +1,7 @@
 package tui
 
 import (
+	"context"
 	"fmt"
 	"strings"
 
@@ -47,6 +48,13 @@ type Shell struct {
 	watchtower tea.Model
 	autopilot  tea.Model
 	copilot    tea.Model
+}
+
+type simulatorBootstrapMsg struct {
+	memory  []agent.MemorySnapshot
+	cpu     []agent.CPUSnapshot
+	storage []agent.StorageSnapshot
+	network []agent.NetworkSnapshot
 }
 
 // NewShell creates the root shell model, defaulting to Watchtower mode and an
@@ -263,6 +271,20 @@ func (s Shell) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tea.WindowSizeMsg:
 		s.width = msg.Width
 		s.height = msg.Height
+	case simulatorBootstrapMsg:
+		child := s.activeChild()
+		updated, _ := child.Update(watchtowerSnapshotsMsg{snapshots: msg.memory})
+		s.updateChild(updated)
+		child = s.activeChild()
+		updated, _ = child.Update(watchtowerCPUSnapshotsMsg{snapshots: msg.cpu})
+		s.updateChild(updated)
+		child = s.activeChild()
+		updated, _ = child.Update(watchtowerStorageSnapshotsMsg{snapshots: msg.storage})
+		s.updateChild(updated)
+		child = s.activeChild()
+		updated, cmd := child.Update(watchtowerNetworkSnapshotsMsg{snapshots: msg.network})
+		s.updateChild(updated)
+		return s, cmd
 	case watchtowerEscalationMsg:
 		return s.applyWatchtowerEscalation(msg.Payload)
 	}
@@ -386,5 +408,11 @@ func (s Shell) attachSimulator() (tea.Model, tea.Cmd) {
 	watchtower.height = s.height
 	s.watchtower = watchtower
 
-	return s, watchtower.refreshCurrentFamilyCmd(fleet)
+	return s, func() tea.Msg {
+		memory, _ := backend.CollectMemory(context.Background(), fleet)
+		cpu, _ := backend.CollectCPU(context.Background(), fleet)
+		storage, _ := backend.CollectStorage(context.Background(), fleet)
+		network, _ := backend.CollectNetwork(context.Background(), fleet)
+		return simulatorBootstrapMsg{memory: memory, cpu: cpu, storage: storage, network: network}
+	}
 }
