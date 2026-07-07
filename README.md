@@ -40,21 +40,36 @@ Open `.env` in any text editor and paste the key where it says `OPENAI_API_KEY`.
 
 (Advanced configuration like timeouts and models are handled in `config/config.toml`).
 
-### Step 2: Start the Test Servers (Optional)
-To test the agent safely on your computer without touching real servers, we have provided a simulated server environment. Run:
+### Step 2: Generate SSH Keys for Test Servers
+
+The agent connects to servers via SSH. For local testing with Docker containers, generate a key pair:
+
+```bash
+mkdir -p test_keys
+ssh-keygen -t ed25519 -f test_keys/id_ed25519 -N ""
+```
+
+This creates `test_keys/id_ed25519` (private key, used by the agent) and `test_keys/id_ed25519.pub` (public key, mounted into containers). The Docker containers in `docker-compose.yml` are pre-configured to accept this key.
+
+> **Note**: The master secret in `cmd/agent/main.go` must be exactly **32 bytes** for AES-256 encryption of SSH keys in the vault. If it's any other length, `EncryptAndStore` silently fails and the SSH client cannot authenticate.
+
+### Step 3: Start the Test Servers (Optional)
+
+To test the agent safely on your computer without touching real servers, we have provided a simulated server environment:
 ```bash
 just up
 ```
-This boots up a fake Web Server and a fake Database Server specifically for testing! (When you're done, you can stop them with `just down`).
+This boots up a Web Server (`devops-web-01` on port 2222) and a Database Server (`devops-db-01` on port 2223) for testing. (When you're done, stop them with `just down`).
 
-### Step 3: Start the Agent
+### Step 4: Start the Agent
+
 You can start the visual dashboard by running:
 ```bash
 just run
 ```
 *(If your computer says `command not found: just`, you can type `go run cmd/agent/main.go` instead).*
 
-If you want Watchtower to start directly on the built-in simulator backend instead of SSH-backed hosts, set this in `config/config.toml`:
+By default, Watchtower uses **SSH-backed collection** against the hosts defined in `hosts.yaml`. For UI development without real SSH targets, switch to the built-in simulator in `config/config.toml`:
 ```toml
 [agent]
 watchtower_backend = "simulator"
@@ -137,6 +152,26 @@ Autopilot and Copilot are currently interactive skeletons that help you learn th
 #### Quitting
 - `Ctrl+c` quits the application from any mode
 - `q` also exits from non-Watchtower modes
+
+## 📋 Configuration Reference
+
+All configuration lives in `config/config.toml`:
+
+```toml
+[llm]
+base_url = "https://openrouter.ai/api/v1"      # LLM API endpoint
+model = "qwen/qwen-2.5-coder-32b-instruct"      # LLM model
+timeout_seconds = 15                             # LLM request timeout
+
+[agent]
+ssh_timeout_seconds = 30                         # SSH connection timeout
+inventory_path = "hosts.yaml"                    # Path to host inventory
+watchtower_backend = "ssh"                       # "ssh" or "simulator"
+watchtower_refresh_interval_seconds = 10         # Auto-refresh interval (0 = disabled)
+database_path = "./agent.db"                     # SQLite database path
+```
+
+Set `watchtower_refresh_interval_seconds` to `0` to disable auto-refresh and rely on manual `r` keypress only.
 
 ## 🛠 For Developers
 If you're a new developer joining the team, please read `AGENTS.md` for strict architectural guidelines on how the code is organized (Clean Architecture) before you start programming.
