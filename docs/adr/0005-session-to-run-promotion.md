@@ -12,11 +12,12 @@ Copilot and Autopilot have distinct authority boundaries, but real operator work
 
 The system will support **explicit promotion** from a Copilot Session to a new Autopilot Run.
 
-The operator may deliberately promote the current Session context into Autopilot. That promotion may carry forward relevant goal framing, recent evidence, and terminal context, but it creates a new Run rather than mutating Copilot into Autopilot.
+The operator may deliberately promote the current Session context into Autopilot. That promotion may carry forward relevant goal framing, recent evidence, terminal context, and attached Skills for explicit review, but it creates a new Run rather than mutating Copilot into Autopilot.
 
 ## Consequences
 
 - Copilot remains advisory by default.
 - Autopilot remains an explicitly entered execution mode.
 - The UI needs a clear promotion affordance and review step.
+- Session-attached Skills must appear as proposed carry-forward attachments during promotion rather than silently becoming Run behavior.
 - Session history and Run history remain related but distinct.

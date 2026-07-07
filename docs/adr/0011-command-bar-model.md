@@ -14,10 +14,12 @@ Autopilot and Copilot will use a **Command Bar** as the unified input for produc
 
 - Plain text in the Command Bar expresses natural-language intent to the agent.
 - Slash-prefixed input invokes Slash Commands.
+- `@` references in the Command Bar attach local files or scripts as structured Prompt References for the current interaction.
 - In Copilot, ordinary shell commands are entered in the terminal pane, not in the Command Bar.
 
 ## Consequences
 
 - Product control remains consistent across the agent-driven modes.
+- Operators can ground agent intent in concrete local artifacts without collapsing the Command Bar into raw shell input.
 - Terminal execution remains a distinct interaction surface instead of being mixed into agent intent input.
 - Focus management becomes an important shell concern because users must be able to tell whether they are typing into the Command Bar or the terminal pane.

@@ -19,14 +19,15 @@ const (
 )
 
 type Task struct {
-	ID         string
-	HostAlias  string
-	HostIP     string
-	Port       int
-	User       string
-	Command    string
-	IsMutative bool
-	Status     TaskStatus
+	ID               string
+	HostAlias        string
+	HostIP           string
+	Port             int
+	User             string
+	Command          string
+	IsMutative       bool
+	Status           TaskStatus
+	VerificationTask *Task
 }
 
 func NewTask(id, hostAlias, hostIP string, port int, user, command string, isMutative bool) (Task, error) {
@@ -44,14 +45,15 @@ func NewTask(id, hostAlias, hostIP string, port int, user, command string, isMut
 	}
 
 	return Task{
-		ID:         id,
-		HostAlias:  hostAlias,
-		HostIP:     hostIP,
-		Port:       port,
-		User:       user,
-		Command:    command,
-		IsMutative: isMutative,
-		Status:     StatusPending,
+		ID:               id,
+		HostAlias:        hostAlias,
+		HostIP:           hostIP,
+		Port:             port,
+		User:             user,
+		Command:          command,
+		IsMutative:       isMutative,
+		Status:           StatusPending,
+		VerificationTask: nil,
 	}, nil
 }
 

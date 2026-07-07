@@ -30,7 +30,7 @@ func TestNewShell_DefaultScopeIsEntireInventory(t *testing.T) {
 func TestNewShellWithInventory_ScopeIncludesAllHosts(t *testing.T) {
 	taskChan, logChan, hitlChan := testChannels()
 	inv := testInventory()
-	shell := NewShellWithInventory(taskChan, logChan, hitlChan, nil, inv)
+	shell := NewShellWithInventory(taskChan, logChan, hitlChan, nil, inv, nil)
 
 	scope := shell.Scope()
 	if scope.Kind != ScopeEntireInventory {
@@ -44,7 +44,7 @@ func TestNewShellWithInventory_ScopeIncludesAllHosts(t *testing.T) {
 func TestShell_SelectHosts_SetsSelectedScope(t *testing.T) {
 	taskChan, logChan, hitlChan := testChannels()
 	inv := testInventory()
-	shell := NewShellWithInventory(taskChan, logChan, hitlChan, nil, inv)
+	shell := NewShellWithInventory(taskChan, logChan, hitlChan, nil, inv, nil)
 
 	shell, err := shell.SelectHosts([]string{"db-master"})
 	if err != nil {
@@ -63,7 +63,7 @@ func TestShell_SelectHosts_SetsSelectedScope(t *testing.T) {
 func TestShell_SelectHosts_PreservesHostData(t *testing.T) {
 	taskChan, logChan, hitlChan := testChannels()
 	inv := testInventory()
-	shell := NewShellWithInventory(taskChan, logChan, hitlChan, nil, inv)
+	shell := NewShellWithInventory(taskChan, logChan, hitlChan, nil, inv, nil)
 
 	shell, err := shell.SelectHosts([]string{"web-prod-01"})
 	if err != nil {
@@ -79,7 +79,7 @@ func TestShell_SelectHosts_PreservesHostData(t *testing.T) {
 func TestShell_SelectHosts_UnknownHostReturnsError(t *testing.T) {
 	taskChan, logChan, hitlChan := testChannels()
 	inv := testInventory()
-	shell := NewShellWithInventory(taskChan, logChan, hitlChan, nil, inv)
+	shell := NewShellWithInventory(taskChan, logChan, hitlChan, nil, inv, nil)
 
 	before := shell.Scope()
 	shell, err := shell.SelectHosts([]string{"missing-host"})
@@ -95,7 +95,7 @@ func TestShell_SelectHosts_UnknownHostReturnsError(t *testing.T) {
 func TestShell_SelectHosts_EmptySelectsEntireInventory(t *testing.T) {
 	taskChan, logChan, hitlChan := testChannels()
 	inv := testInventory()
-	shell := NewShellWithInventory(taskChan, logChan, hitlChan, nil, inv)
+	shell := NewShellWithInventory(taskChan, logChan, hitlChan, nil, inv, nil)
 
 	shell, err := shell.SelectHosts([]string{"db-master"})
 	if err != nil {
@@ -115,7 +115,7 @@ func TestShell_SelectHosts_EmptySelectsEntireInventory(t *testing.T) {
 func TestShell_SetEntireInventory_RevertsSelection(t *testing.T) {
 	taskChan, logChan, hitlChan := testChannels()
 	inv := testInventory()
-	shell := NewShellWithInventory(taskChan, logChan, hitlChan, nil, inv)
+	shell := NewShellWithInventory(taskChan, logChan, hitlChan, nil, inv, nil)
 
 	shell, _ = shell.SelectHosts([]string{"db-master"})
 	shell = shell.SetEntireInventory()
@@ -132,7 +132,7 @@ func TestShell_SetEntireInventory_RevertsSelection(t *testing.T) {
 func TestShell_ScopeBadge_ReflectsEntireInventory(t *testing.T) {
 	taskChan, logChan, hitlChan := testChannels()
 	inv := testInventory()
-	shell := NewShellWithInventory(taskChan, logChan, hitlChan, nil, inv)
+	shell := NewShellWithInventory(taskChan, logChan, hitlChan, nil, inv, nil)
 
 	badge := shell.ScopeBadge()
 	if !strings.Contains(badge, "Entire Inventory") {
@@ -143,7 +143,7 @@ func TestShell_ScopeBadge_ReflectsEntireInventory(t *testing.T) {
 func TestShell_ScopeBadge_ReflectsSelectedHosts(t *testing.T) {
 	taskChan, logChan, hitlChan := testChannels()
 	inv := testInventory()
-	shell := NewShellWithInventory(taskChan, logChan, hitlChan, nil, inv)
+	shell := NewShellWithInventory(taskChan, logChan, hitlChan, nil, inv, nil)
 
 	shell, _ = shell.SelectHosts([]string{"db-master", "web-prod-01"})
 	badge := shell.ScopeBadge()
@@ -158,7 +158,7 @@ func TestShell_ScopeBadge_ReflectsSelectedHosts(t *testing.T) {
 func TestShell_View_SurfacesCurrentScope(t *testing.T) {
 	taskChan, logChan, hitlChan := testChannels()
 	inv := testInventory()
-	shell := NewShellWithInventory(taskChan, logChan, hitlChan, nil, inv)
+	shell := NewShellWithInventory(taskChan, logChan, hitlChan, nil, inv, nil)
 
 	updated, _ := shell.Update(tea.WindowSizeMsg{Width: 80, Height: 24})
 	shell = updated.(Shell)
@@ -172,7 +172,7 @@ func TestShell_View_SurfacesCurrentScope(t *testing.T) {
 func TestShell_ModeSwitchPreservesScope(t *testing.T) {
 	taskChan, logChan, hitlChan := testChannels()
 	inv := testInventory()
-	shell := NewShellWithInventory(taskChan, logChan, hitlChan, nil, inv)
+	shell := NewShellWithInventory(taskChan, logChan, hitlChan, nil, inv, nil)
 
 	shell, _ = shell.SelectHosts([]string{"web-prod-01"})
 
