@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"strings"
+	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
@@ -111,7 +112,7 @@ func NewShellWithInventoryAndCollectors(
 	memoryCollector MemorySnapshotCollector,
 	cpuCollector CPUSnapshotCollector,
 ) Shell {
-	return NewShellWithInventoryAndAllCollectors(taskChan, logChan, hitlChan, initialTasks, inv, memoryCollector, cpuCollector, nil, nil)
+	return NewShellWithInventoryAndAllCollectors(taskChan, logChan, hitlChan, initialTasks, inv, memoryCollector, cpuCollector, nil, nil, 0)
 }
 
 func NewShellWithInventoryAndAllCollectors(
@@ -124,11 +125,12 @@ func NewShellWithInventoryAndAllCollectors(
 	cpuCollector CPUSnapshotCollector,
 	storageCollector StorageSnapshotCollector,
 	networkCollector NetworkSnapshotCollector,
+	watchtowerRefreshInterval time.Duration,
 ) Shell {
 	s := NewShell(taskChan, logChan, hitlChan, initialTasks)
 	s.inventory = cloneHosts(inv)
 	s.scope = TargetScope{Kind: ScopeEntireInventory, Hosts: cloneHosts(inv)}
-	s.watchtower = NewWatchtowerModelWithAllCollectors(taskChan, logChan, hitlChan, initialTasks, inv, s.scope, memoryCollector, cpuCollector, storageCollector, networkCollector)
+	s.watchtower = NewWatchtowerModelWithAllCollectors(taskChan, logChan, hitlChan, initialTasks, inv, s.scope, memoryCollector, cpuCollector, storageCollector, networkCollector, watchtowerRefreshInterval)
 	return s
 }
 
@@ -403,7 +405,7 @@ func (s Shell) attachSimulator() (tea.Model, tea.Cmd) {
 		return s, nil
 	}
 
-	watchtower = watchtower.AttachCollectors(fleet, backend.CollectMemory, backend.CollectCPU, backend.CollectStorage, backend.CollectNetwork)
+	watchtower = watchtower.AttachCollectors(fleet, backend.CollectMemory, backend.CollectCPU, backend.CollectStorage, backend.CollectNetwork, 0)
 	watchtower.width = s.width
 	watchtower.height = s.height
 	s.watchtower = watchtower

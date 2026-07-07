@@ -132,6 +132,8 @@ type watchtowerNetworkSnapshotsMsg struct {
 	snapshots []agent.NetworkSnapshot
 }
 
+type watchtowerRefreshTickMsg struct{}
+
 type watchtowerViewHistoryEntry struct {
 	viewMode       watchtowerViewMode
 	metricFamily   agent.MetricFamily
@@ -166,6 +168,7 @@ type WatchtowerModel struct {
 	now              func() time.Time
 	trendWindows     map[watchtowerTrendKey][]watchtowerTrendPoint
 	legacy           Model
+	refreshInterval  time.Duration
 }
 
 func NewWatchtowerModel(
@@ -190,7 +193,7 @@ func NewWatchtowerModelWithCollectors(
 	memoryCollector MemorySnapshotCollector,
 	cpuCollector CPUSnapshotCollector,
 ) WatchtowerModel {
-	return NewWatchtowerModelWithAllCollectors(taskChan, logChan, hitlChan, initialTasks, inv, scope, memoryCollector, cpuCollector, nil, nil)
+	return NewWatchtowerModelWithAllCollectors(taskChan, logChan, hitlChan, initialTasks, inv, scope, memoryCollector, cpuCollector, nil, nil, 0)
 }
 
 func NewWatchtowerModelWithAllCollectors(
@@ -204,6 +207,7 @@ func NewWatchtowerModelWithAllCollectors(
 	cpuCollector CPUSnapshotCollector,
 	storageCollector StorageSnapshotCollector,
 	networkCollector NetworkSnapshotCollector,
+	refreshInterval time.Duration,
 ) WatchtowerModel {
 	if scope.Kind == 0 && len(scope.Hosts) == 0 {
 		scope = TargetScope{Kind: ScopeEntireInventory, Hosts: cloneHosts(inv)}
@@ -225,6 +229,7 @@ func NewWatchtowerModelWithAllCollectors(
 		now:              time.Now,
 		trendWindows:     make(map[watchtowerTrendKey][]watchtowerTrendPoint),
 		legacy:           NewModel(taskChan, logChan, hitlChan, initialTasks),
+		refreshInterval:  refreshInterval,
 	}
 }
 
@@ -234,6 +239,7 @@ func (m WatchtowerModel) AttachCollectors(
 	cpuCollector CPUSnapshotCollector,
 	storageCollector StorageSnapshotCollector,
 	networkCollector NetworkSnapshotCollector,
+	refreshInterval time.Duration,
 ) WatchtowerModel {
 	m.inventory = cloneHosts(inv)
 	m.scope = TargetScope{Kind: ScopeEntireInventory, Hosts: cloneHosts(inv)}
@@ -253,6 +259,7 @@ func (m WatchtowerModel) AttachCollectors(
 	m.matrixPageSize = 4
 	m.history = nil
 	m.refreshing = false
+	m.refreshInterval = refreshInterval
 	m.trendWindows = make(map[watchtowerTrendKey][]watchtowerTrendPoint)
 	if m.now == nil {
 		m.now = time.Now
@@ -263,11 +270,27 @@ func (m WatchtowerModel) AttachCollectors(
 func (m WatchtowerModel) Init() tea.Cmd {
 	cmds := []tea.Cmd{m.legacy.Init()}
 	if len(m.inventory) > 0 {
-		if cmd := m.refreshCurrentFamilyCmd(m.inventory); cmd != nil {
-			cmds = append(cmds, cmd)
+		for _, cmd := range []tea.Cmd{
+			m.refreshMemoryCmd(m.inventory),
+			m.refreshCPUCmd(m.inventory),
+			m.refreshStorageCmd(m.inventory),
+			m.refreshNetworkCmd(m.inventory),
+		} {
+			if cmd != nil {
+				cmds = append(cmds, cmd)
+			}
 		}
 	}
+	if m.refreshInterval > 0 {
+		cmds = append(cmds, m.refreshTickCmd())
+	}
 	return tea.Batch(cmds...)
+}
+
+func (m WatchtowerModel) refreshTickCmd() tea.Cmd {
+	return tea.Tick(m.refreshInterval, func(time.Time) tea.Msg {
+		return watchtowerRefreshTickMsg{}
+	})
 }
 
 func (m WatchtowerModel) SetScope(scope TargetScope) WatchtowerModel {
@@ -318,6 +341,13 @@ func (m WatchtowerModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.refreshing = false
 		m.clampSelection()
 		return m, nil
+	case watchtowerRefreshTickMsg:
+		if m.refreshing || m.currentCollectorMissing() {
+			return m, m.refreshTickCmd()
+		}
+		hosts := m.hostsForRefresh()
+		m.refreshing = true
+		return m, tea.Batch(m.refreshCurrentFamilyCmd(hosts), m.refreshTickCmd())
 	case TaskUpdatedMsg, LogReceivedMsg, HitlRequestMsg:
 		updated, cmd := m.legacy.Update(msg)
 		m.legacy = updated.(Model)

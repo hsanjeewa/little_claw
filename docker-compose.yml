@@ -1,4 +1,3 @@
-version: '3.8'
 services:
   web-prod-01:
     image: lscr.io/linuxserver/openssh-server:latest

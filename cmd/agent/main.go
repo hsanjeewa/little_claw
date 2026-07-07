@@ -43,10 +43,11 @@ func main() {
 
 	sshTimeout := time.Duration(cfg.Agent.SSHTimeoutSeconds) * time.Second
 	llmTimeout := time.Duration(cfg.LLM.TimeoutSeconds) * time.Second
+	watchtowerRefreshInterval := time.Duration(cfg.Agent.WatchtowerRefreshIntervalSeconds) * time.Second
 
 	analyzer := llm.NewLocalOpenAIClient(cfg.LLM.BaseURL, apiKey, cfg.LLM.Model)
 
-	masterSecret := []byte("a-very-secret-key-32-bytes-long!!")
+	masterSecret := []byte("a-very-secret-key-32-bytes-long!")
 	vault := security.NewLocalEncryptedVault(masterSecret)
 
 	privateKeyData, err := os.ReadFile("test_keys/id_ed25519")
@@ -85,8 +86,12 @@ func main() {
 		}
 		watchtowerCollector := ssh.NewWatchtowerMemoryCollector(sshClient)
 		watchtowerCPUCollector := ssh.NewWatchtowerCPUCollector(sshClient)
+		watchtowerStorageCollector := ssh.NewWatchtowerStorageCollector(sshClient)
+		watchtowerNetworkCollector := ssh.NewWatchtowerNetworkCollector(sshClient)
 		memoryCollector = watchtowerCollector.CollectMemory
 		cpuCollector = watchtowerCPUCollector.CollectCPU
+		storageCollector = watchtowerStorageCollector.CollectStorage
+		networkCollector = watchtowerNetworkCollector.CollectNetwork
 	}
 
 	var tasks []agent.Task
@@ -103,7 +108,7 @@ func main() {
 		}
 	}
 
-	model := tui.NewShellWithInventoryAndAllCollectors(taskChan, logChan, hitlChan, tasks, targets, memoryCollector, cpuCollector, storageCollector, networkCollector)
+	model := tui.NewShellWithInventoryAndAllCollectors(taskChan, logChan, hitlChan, tasks, targets, memoryCollector, cpuCollector, storageCollector, networkCollector, watchtowerRefreshInterval)
 
 	if watchtowerBackend != "simulator" {
 		go func() {

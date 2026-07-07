@@ -6,4 +6,6 @@ timeout_seconds = 15
 [agent]
 ssh_timeout_seconds = 30
 inventory_path = "hosts.yaml"
+watchtower_backend = "ssh"
+watchtower_refresh_interval_seconds = 10
 database_path = "./agent.db"

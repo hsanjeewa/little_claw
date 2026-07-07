@@ -17,7 +17,8 @@ type Config struct {
 		SSHTimeoutSeconds int    `toml:"ssh_timeout_seconds"`
 		InventoryPath     string `toml:"inventory_path"`
 		DatabasePath      string `toml:"database_path"`
-		WatchtowerBackend string `toml:"watchtower_backend"`
+		WatchtowerBackend            string `toml:"watchtower_backend"`
+		WatchtowerRefreshIntervalSeconds int `toml:"watchtower_refresh_interval_seconds"`
 	} `toml:"agent"`
 }
 

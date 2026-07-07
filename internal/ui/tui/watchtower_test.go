@@ -79,7 +79,7 @@ func newWatchtowerForTest(inv []inventory.TargetHost, collector MemorySnapshotCo
 
 func newWatchtowerWithAllSnapshotsForTest(inv []inventory.TargetHost) WatchtowerModel {
 	taskChan, logChan, hitlChan := testChannels()
-	model := NewWatchtowerModelWithAllCollectors(taskChan, logChan, hitlChan, nil, inv, TargetScope{Kind: ScopeEntireInventory, Hosts: cloneHosts(inv)}, nil, nil, nil, nil)
+	model := NewWatchtowerModelWithAllCollectors(taskChan, logChan, hitlChan, nil, inv, TargetScope{Kind: ScopeEntireInventory, Hosts: cloneHosts(inv)}, nil, nil, nil, nil, 0)
 	updated, _ := model.Update(watchtowerSnapshotsMsg{snapshots: testMemorySnapshots()})
 	model = updated.(WatchtowerModel)
 	updated, _ = model.Update(watchtowerCPUSnapshotsMsg{snapshots: testCPUSnapshots()})
@@ -520,7 +520,7 @@ func TestWatchtowerModel_CPUTrendWindowIsBounded(t *testing.T) {
 func TestWatchtowerModel_StorageAggregateShowsTrustBadges(t *testing.T) {
 	now := time.Date(2026, 7, 5, 12, 0, 0, 0, time.UTC)
 	taskChan, logChan, hitlChan := testChannels()
-	model := NewWatchtowerModelWithAllCollectors(taskChan, logChan, hitlChan, nil, trustSignalInventory(), TargetScope{Kind: ScopeEntireInventory, Hosts: cloneHosts(trustSignalInventory())}, nil, nil, nil, nil)
+	model := NewWatchtowerModelWithAllCollectors(taskChan, logChan, hitlChan, nil, trustSignalInventory(), TargetScope{Kind: ScopeEntireInventory, Hosts: cloneHosts(trustSignalInventory())}, nil, nil, nil, nil, 0)
 	model.now = func() time.Time { return now }
 
 	updated, _ := model.Update(tea.WindowSizeMsg{Width: 120, Height: 28})
@@ -547,7 +547,7 @@ func TestWatchtowerModel_StorageAggregateShowsTrustBadges(t *testing.T) {
 func TestWatchtowerModel_StorageMatrixAndDetailShowExplicitTrustStates(t *testing.T) {
 	now := time.Date(2026, 7, 5, 12, 0, 0, 0, time.UTC)
 	taskChan, logChan, hitlChan := testChannels()
-	model := NewWatchtowerModelWithAllCollectors(taskChan, logChan, hitlChan, nil, trustSignalInventory(), TargetScope{Kind: ScopeEntireInventory, Hosts: cloneHosts(trustSignalInventory())}, nil, nil, nil, nil)
+	model := NewWatchtowerModelWithAllCollectors(taskChan, logChan, hitlChan, nil, trustSignalInventory(), TargetScope{Kind: ScopeEntireInventory, Hosts: cloneHosts(trustSignalInventory())}, nil, nil, nil, nil, 0)
 	model.now = func() time.Time { return now }
 
 	updated, _ := model.Update(tea.WindowSizeMsg{Width: 120, Height: 28})
@@ -610,7 +610,7 @@ func TestWatchtowerModel_StorageMatrixAndDetailShowExplicitTrustStates(t *testin
 func TestWatchtowerModel_StorageTrendWindowIsBounded(t *testing.T) {
 	now := time.Date(2026, 7, 5, 12, 0, 0, 0, time.UTC)
 	taskChan, logChan, hitlChan := testChannels()
-	model := NewWatchtowerModelWithAllCollectors(taskChan, logChan, hitlChan, nil, testInventory(), TargetScope{Kind: ScopeEntireInventory, Hosts: cloneHosts(testInventory())}, nil, nil, nil, nil)
+	model := NewWatchtowerModelWithAllCollectors(taskChan, logChan, hitlChan, nil, testInventory(), TargetScope{Kind: ScopeEntireInventory, Hosts: cloneHosts(testInventory())}, nil, nil, nil, nil, 0)
 	model.now = func() time.Time { return now }
 
 	updated, _ := model.Update(tea.WindowSizeMsg{Width: 100, Height: 24})
@@ -647,7 +647,7 @@ func TestWatchtowerModel_StorageTrendWindowIsBounded(t *testing.T) {
 func TestWatchtowerModel_NetworkAggregateShowsTrustBadges(t *testing.T) {
 	now := time.Date(2026, 7, 5, 12, 0, 0, 0, time.UTC)
 	taskChan, logChan, hitlChan := testChannels()
-	model := NewWatchtowerModelWithAllCollectors(taskChan, logChan, hitlChan, nil, trustSignalInventory(), TargetScope{Kind: ScopeEntireInventory, Hosts: cloneHosts(trustSignalInventory())}, nil, nil, nil, nil)
+	model := NewWatchtowerModelWithAllCollectors(taskChan, logChan, hitlChan, nil, trustSignalInventory(), TargetScope{Kind: ScopeEntireInventory, Hosts: cloneHosts(trustSignalInventory())}, nil, nil, nil, nil, 0)
 	model.now = func() time.Time { return now }
 
 	updated, _ := model.Update(tea.WindowSizeMsg{Width: 120, Height: 28})
@@ -678,7 +678,7 @@ func TestWatchtowerModel_NetworkAggregateShowsTrustBadges(t *testing.T) {
 func TestWatchtowerModel_NetworkMatrixAndDetailShowExplicitTrustStates(t *testing.T) {
 	now := time.Date(2026, 7, 5, 12, 0, 0, 0, time.UTC)
 	taskChan, logChan, hitlChan := testChannels()
-	model := NewWatchtowerModelWithAllCollectors(taskChan, logChan, hitlChan, nil, trustSignalInventory(), TargetScope{Kind: ScopeEntireInventory, Hosts: cloneHosts(trustSignalInventory())}, nil, nil, nil, nil)
+	model := NewWatchtowerModelWithAllCollectors(taskChan, logChan, hitlChan, nil, trustSignalInventory(), TargetScope{Kind: ScopeEntireInventory, Hosts: cloneHosts(trustSignalInventory())}, nil, nil, nil, nil, 0)
 	model.now = func() time.Time { return now }
 
 	updated, _ := model.Update(tea.WindowSizeMsg{Width: 120, Height: 28})
@@ -742,7 +742,7 @@ func TestWatchtowerModel_NetworkMatrixAndDetailShowExplicitTrustStates(t *testin
 func TestWatchtowerModel_NetworkTrendWindowIsBounded(t *testing.T) {
 	now := time.Date(2026, 7, 5, 12, 0, 0, 0, time.UTC)
 	taskChan, logChan, hitlChan := testChannels()
-	model := NewWatchtowerModelWithAllCollectors(taskChan, logChan, hitlChan, nil, testInventory(), TargetScope{Kind: ScopeEntireInventory, Hosts: cloneHosts(testInventory())}, nil, nil, nil, nil)
+	model := NewWatchtowerModelWithAllCollectors(taskChan, logChan, hitlChan, nil, testInventory(), TargetScope{Kind: ScopeEntireInventory, Hosts: cloneHosts(testInventory())}, nil, nil, nil, nil, 0)
 	model.now = func() time.Time { return now }
 
 	updated, _ := model.Update(tea.WindowSizeMsg{Width: 100, Height: 24})
@@ -964,7 +964,7 @@ func TestWatchtowerModel_CPURefreshUsesCPUCollector(t *testing.T) {
 
 func TestWatchtowerModel_SwitchesToStorageFleet(t *testing.T) {
 	taskChan, logChan, hitlChan := testChannels()
-	model := NewWatchtowerModelWithAllCollectors(taskChan, logChan, hitlChan, nil, testInventory(), TargetScope{Kind: ScopeEntireInventory, Hosts: cloneHosts(testInventory())}, nil, nil, nil, nil)
+	model := NewWatchtowerModelWithAllCollectors(taskChan, logChan, hitlChan, nil, testInventory(), TargetScope{Kind: ScopeEntireInventory, Hosts: cloneHosts(testInventory())}, nil, nil, nil, nil, 0)
 
 	updated, _ := model.Update(tea.WindowSizeMsg{Width: 100, Height: 24})
 	model = updated.(WatchtowerModel)
@@ -987,7 +987,7 @@ func TestWatchtowerModel_SwitchesToStorageFleet(t *testing.T) {
 
 func TestWatchtowerModel_SwitchesToNetworkFleet(t *testing.T) {
 	taskChan, logChan, hitlChan := testChannels()
-	model := NewWatchtowerModelWithAllCollectors(taskChan, logChan, hitlChan, nil, testInventory(), TargetScope{Kind: ScopeEntireInventory, Hosts: cloneHosts(testInventory())}, nil, nil, nil, nil)
+	model := NewWatchtowerModelWithAllCollectors(taskChan, logChan, hitlChan, nil, testInventory(), TargetScope{Kind: ScopeEntireInventory, Hosts: cloneHosts(testInventory())}, nil, nil, nil, nil, 0)
 
 	updated, _ := model.Update(tea.WindowSizeMsg{Width: 100, Height: 24})
 	model = updated.(WatchtowerModel)
@@ -1651,7 +1651,7 @@ func TestWatchtowerModel_MemoryMatrixBackRestoresAggregateState(t *testing.T) {
 func TestWatchtowerEscalationPayload_IncludesWatchtowerViewContext(t *testing.T) {
 	now := time.Date(2026, 7, 5, 12, 0, 0, 0, time.UTC)
 	taskChan, logChan, hitlChan := testChannels()
-	model := NewWatchtowerModelWithAllCollectors(taskChan, logChan, hitlChan, nil, trustSignalInventory(), TargetScope{Kind: ScopeEntireInventory, Hosts: cloneHosts(trustSignalInventory())}, nil, nil, nil, nil)
+	model := NewWatchtowerModelWithAllCollectors(taskChan, logChan, hitlChan, nil, trustSignalInventory(), TargetScope{Kind: ScopeEntireInventory, Hosts: cloneHosts(trustSignalInventory())}, nil, nil, nil, nil, 0)
 	model.now = func() time.Time { return now }
 
 	updated, _ := model.Update(tea.WindowSizeMsg{Width: 100, Height: 24})
@@ -1674,7 +1674,7 @@ func TestWatchtowerEscalationPayload_IncludesWatchtowerViewContext(t *testing.T)
 func TestWatchtowerEscalationPayload_IncludesHostStateFreshness(t *testing.T) {
 	now := time.Date(2026, 7, 5, 12, 0, 0, 0, time.UTC)
 	taskChan, logChan, hitlChan := testChannels()
-	model := NewWatchtowerModelWithAllCollectors(taskChan, logChan, hitlChan, nil, trustSignalInventory(), TargetScope{Kind: ScopeEntireInventory, Hosts: cloneHosts(trustSignalInventory())}, nil, nil, nil, nil)
+	model := NewWatchtowerModelWithAllCollectors(taskChan, logChan, hitlChan, nil, trustSignalInventory(), TargetScope{Kind: ScopeEntireInventory, Hosts: cloneHosts(trustSignalInventory())}, nil, nil, nil, nil, 0)
 	model.now = func() time.Time { return now }
 
 	updated, _ := model.Update(tea.WindowSizeMsg{Width: 100, Height: 24})
@@ -1697,7 +1697,7 @@ func TestWatchtowerEscalationPayload_IncludesHostStateFreshness(t *testing.T) {
 func TestWatchtowerEscalationPayload_IncludesRecentObservations(t *testing.T) {
 	now := time.Date(2026, 7, 5, 12, 0, 0, 0, time.UTC)
 	taskChan, logChan, hitlChan := testChannels()
-	model := NewWatchtowerModelWithAllCollectors(taskChan, logChan, hitlChan, nil, trustSignalInventory(), TargetScope{Kind: ScopeEntireInventory, Hosts: cloneHosts(trustSignalInventory())}, nil, nil, nil, nil)
+	model := NewWatchtowerModelWithAllCollectors(taskChan, logChan, hitlChan, nil, trustSignalInventory(), TargetScope{Kind: ScopeEntireInventory, Hosts: cloneHosts(trustSignalInventory())}, nil, nil, nil, nil, 0)
 	model.now = func() time.Time { return now }
 
 	updated, _ := model.Update(tea.WindowSizeMsg{Width: 100, Height: 24})
