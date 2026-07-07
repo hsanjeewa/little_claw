@@ -15,7 +15,7 @@ func TestAutopilotModel_ViewRendersCommandBarAndPanes(t *testing.T) {
 	m = updated.(AutopilotModel)
 
 	view := m.View()
-	if !strings.Contains(view, "COMMAND") {
+	if !strings.Contains(view, commandBarLabel) {
 		t.Fatalf("expected Autopilot view to render command bar label, got:\n%s", view)
 	}
 	if !strings.Contains(view, "PLAN") {
@@ -68,7 +68,7 @@ func TestAutopilotModel_HandoffCompactViewFitsBoundsAndShowsLabels(t *testing.T)
 
 	view := m.View()
 	assertRenderedWithinBounds(t, view, 80, 14)
-	for _, label := range []string{"WATCHTOWER HANDOFF", "db-master", "PLAN", "TRANSCRIPT", "COMMAND"} {
+	for _, label := range []string{"WATCHTOWER HANDOFF", "db-master", "PLAN", "TRANSCRIPT", commandBarLabel} {
 		if !strings.Contains(view, label) {
 			t.Fatalf("expected compact escalated Autopilot view to contain %q, got:\n%s", label, view)
 		}
@@ -84,7 +84,7 @@ func TestAutopilotModel_PaneLabelsVisibleAfterCompactResize(t *testing.T) {
 
 	view := m.View()
 	assertRenderedWithinBounds(t, view, 80, 14)
-	for _, label := range []string{"PLAN", "TRANSCRIPT", "COMMAND"} {
+	for _, label := range []string{"PLAN", "TRANSCRIPT", commandBarLabel} {
 		if !strings.Contains(view, label) {
 			t.Fatalf("expected resized compact Autopilot view to contain %q, got:\n%s", label, view)
 		}
@@ -102,5 +102,34 @@ func TestAutopilotModel_FocusCyclesOnTab(t *testing.T) {
 
 	if m.focusedPane == initialFocus {
 		t.Fatalf("expected focus to change after Tab, still at %d", m.focusedPane)
+	}
+}
+
+func TestAutopilotModel_DoesNotQuitOnQ(t *testing.T) {
+	m := NewAutopilotModel()
+	updated, _ := m.Update(tea.WindowSizeMsg{Width: 80, Height: 24})
+	m = updated.(AutopilotModel)
+
+	updated, cmd := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'q'}})
+	m = updated.(AutopilotModel)
+
+	if isQuitCmd(cmd) {
+		t.Fatal("expected 'q' not to quit in Autopilot")
+	}
+}
+
+func TestAutopilotModel_QuitsOnSlashExit(t *testing.T) {
+	m := NewAutopilotModel()
+	updated, _ := m.Update(tea.WindowSizeMsg{Width: 80, Height: 24})
+	m = updated.(AutopilotModel)
+
+	for _, r := range "/exit" {
+		updated, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{r}})
+		m = updated.(AutopilotModel)
+	}
+
+	_, cmd := m.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	if !isQuitCmd(cmd) {
+		t.Fatal("expected '/exit' command to quit the app")
 	}
 }

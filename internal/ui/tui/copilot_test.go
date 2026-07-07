@@ -15,7 +15,7 @@ func TestCopilotModel_ViewRendersCommandBarAndPanes(t *testing.T) {
 	m = updated.(CopilotModel)
 
 	view := m.View()
-	if !strings.Contains(view, "COMMAND") {
+	if !strings.Contains(view, commandBarLabel) {
 		t.Fatalf("expected Copilot view to render command bar label, got:\n%s", view)
 	}
 	if !strings.Contains(view, "TERMINAL") {
@@ -72,6 +72,35 @@ func TestCopilotModel_FocusCyclesOnTab(t *testing.T) {
 	}
 }
 
+func TestCopilotModel_DoesNotQuitOnQ(t *testing.T) {
+	m := NewCopilotModel()
+	updated, _ := m.Update(tea.WindowSizeMsg{Width: 80, Height: 24})
+	m = updated.(CopilotModel)
+
+	updated, cmd := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'q'}})
+	m = updated.(CopilotModel)
+
+	if isQuitCmd(cmd) {
+		t.Fatal("expected 'q' not to quit in Copilot")
+	}
+}
+
+func TestCopilotModel_QuitsOnSlashExit(t *testing.T) {
+	m := NewCopilotModel()
+	updated, _ := m.Update(tea.WindowSizeMsg{Width: 80, Height: 24})
+	m = updated.(CopilotModel)
+
+	for _, r := range "/exit" {
+		updated, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{r}})
+		m = updated.(CopilotModel)
+	}
+
+	_, cmd := m.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	if !isQuitCmd(cmd) {
+		t.Fatal("expected '/exit' command to quit the app")
+	}
+}
+
 func TestCopilotModel_HandoffCompactViewFitsBoundsAndShowsLabels(t *testing.T) {
 	m := NewCopilotModel()
 	m = m.ApplyWatchtowerEscalation(WatchtowerEscalationPayload{
@@ -85,7 +114,7 @@ func TestCopilotModel_HandoffCompactViewFitsBoundsAndShowsLabels(t *testing.T) {
 
 	view := m.View()
 	assertRenderedWithinBounds(t, view, 80, 20)
-	for _, label := range []string{"WATCHTOWER HANDOFF", "db-master", "TERMINAL", "ADVISORY", "GUIDANCE", "COMMAND"} {
+	for _, label := range []string{"WATCHTOWER HANDOFF", "db-master", "TERMINAL", "ADVISORY", "GUIDANCE", commandBarLabel} {
 		if !strings.Contains(view, label) {
 			t.Fatalf("expected compact escalated Copilot view to contain %q, got:\n%s", label, view)
 		}
@@ -101,7 +130,7 @@ func TestCopilotModel_PaneLabelsVisibleAfterCompactResize(t *testing.T) {
 
 	view := m.View()
 	assertRenderedWithinBounds(t, view, 80, 20)
-	for _, label := range []string{"TERMINAL", "ADVISORY", "GUIDANCE", "COMMAND"} {
+	for _, label := range []string{"TERMINAL", "ADVISORY", "GUIDANCE", commandBarLabel} {
 		if !strings.Contains(view, label) {
 			t.Fatalf("expected resized compact Copilot view to contain %q, got:\n%s", label, view)
 		}

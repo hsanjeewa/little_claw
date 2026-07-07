@@ -75,6 +75,9 @@ func (m CopilotModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			if m.focusedPane == copilotPaneCommand {
 				cmd := strings.TrimSpace(m.commandInput.Value())
 				if cmd != "" {
+					if cmd == "/exit" {
+						return m, tea.Quit
+					}
 					m.terminal = append(m.terminal, "$ "+cmd)
 					m.commandInput.Reset()
 				}
@@ -119,9 +122,9 @@ func (m CopilotModel) View() string {
 
 	sidePaneHeight := max(panesHeight/2, 1)
 
-	terminal := m.renderPane("TERMINAL", m.terminal, terminalWidth, panesHeight, m.focusedPane == copilotPaneTerminal)
-	advisory := m.renderPane("ADVISORY", m.advisory, sideWidth, sidePaneHeight, m.focusedPane == copilotPaneAdvisory)
-	guidance := m.renderPane("GUIDANCE", m.guidance, sideWidth, max(panesHeight-sidePaneHeight, 1), m.focusedPane == copilotPaneGuidance)
+	terminal := renderPane("TERMINAL", m.terminal, terminalWidth, panesHeight, m.focusedPane == copilotPaneTerminal)
+	advisory := renderPane("ADVISORY", m.advisory, sideWidth, sidePaneHeight, m.focusedPane == copilotPaneAdvisory)
+	guidance := renderPane("GUIDANCE", m.guidance, sideWidth, max(panesHeight-sidePaneHeight, 1), m.focusedPane == copilotPaneGuidance)
 
 	sideStack := lipgloss.JoinVertical(lipgloss.Left, advisory, guidance)
 	panes := lipgloss.JoinHorizontal(lipgloss.Top, terminal, sideStack)
@@ -155,7 +158,7 @@ func (m CopilotModel) commandWidth() int {
 	if w == 0 {
 		w = 80
 	}
-	labelWidth := lipgloss.Width("COMMAND ")
+	labelWidth := lipgloss.Width(commandBarLabel + " ")
 	padding := 4
 	available := w - labelWidth - padding
 	available = max(available, 20)
@@ -163,31 +166,7 @@ func (m CopilotModel) commandWidth() int {
 }
 
 func (m CopilotModel) renderCommandBar() string {
-	label := lipgloss.NewStyle().Bold(true).Render("COMMAND")
+	label := lipgloss.NewStyle().Bold(true).Render(commandBarLabel)
 	bar := lipgloss.JoinHorizontal(lipgloss.Center, label, " ", m.commandInput.View())
 	return bar
-}
-
-func (m CopilotModel) renderPane(title string, lines []string, width, height int, active bool) string {
-	style := panelStyle
-	if active {
-		style = activePanelStyle
-	}
-
-	frameWidth := style.GetHorizontalFrameSize()
-	frameHeight := style.GetVerticalFrameSize()
-	styleWidth := max(width-frameWidth, 0)
-	styleHeight := max(height-frameHeight, 0)
-	innerWidth := max(styleWidth-style.GetHorizontalPadding(), 1)
-	innerHeight := max(styleHeight-style.GetVerticalPadding()-1, 0)
-
-	header := lipgloss.NewStyle().Bold(true).Render(title)
-	body := strings.Join(lines, "\n")
-	if body == "" {
-		body = " "
-	}
-
-	bodyStyle := lipgloss.NewStyle().Width(innerWidth).Height(innerHeight)
-	content := lipgloss.JoinVertical(lipgloss.Left, header, bodyStyle.Render(body))
-	return style.Width(styleWidth).Height(styleHeight).Render(content)
 }

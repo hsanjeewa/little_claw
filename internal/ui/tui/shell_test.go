@@ -26,6 +26,15 @@ func testChannels() (chan agent.Task, chan agent.ExecutionLog, chan agent.HitlRe
 	return make(chan agent.Task, 1), make(chan agent.ExecutionLog, 1), make(chan agent.HitlRequest, 1)
 }
 
+func isQuitCmd(cmd tea.Cmd) bool {
+	if cmd == nil {
+		return false
+	}
+	msg := cmd()
+	_, ok := msg.(tea.QuitMsg)
+	return ok
+}
+
 func leaderSwitch(t *testing.T, shell Shell, key rune) Shell {
 	t.Helper()
 
@@ -222,7 +231,7 @@ func TestShell_ModePersistsAcrossWindowResize(t *testing.T) {
 
 func TestShell_WatchtowerViewRendersFleetMatrix(t *testing.T) {
 	taskChan, logChan, hitlChan := testChannels()
-	shell := NewShellWithInventory(taskChan, logChan, hitlChan, nil, testInventory())
+	shell := NewShellWithInventory(taskChan, logChan, hitlChan, nil, testInventory(), nil)
 
 	updated, _ := shell.Update(tea.WindowSizeMsg{Width: 100, Height: 30})
 	shell = updated.(Shell)
@@ -238,7 +247,7 @@ func TestShell_WatchtowerViewRendersFleetMatrix(t *testing.T) {
 
 func TestShell_InitialWatchtowerViewFitsFallbackViewport(t *testing.T) {
 	taskChan, logChan, hitlChan := testChannels()
-	shell := NewShellWithInventory(taskChan, logChan, hitlChan, nil, testInventory())
+	shell := NewShellWithInventory(taskChan, logChan, hitlChan, nil, testInventory(), nil)
 
 	updated, _ := shell.Update(watchtowerSnapshotsMsg{snapshots: testMemorySnapshots()})
 	shell = updated.(Shell)
@@ -256,7 +265,7 @@ func TestShell_InitialWatchtowerViewFitsFallbackViewport(t *testing.T) {
 
 func TestShell_WatchtowerViewRespectsWindowResizeBounds(t *testing.T) {
 	taskChan, logChan, hitlChan := testChannels()
-	shell := NewShellWithInventory(taskChan, logChan, hitlChan, nil, testInventory())
+	shell := NewShellWithInventory(taskChan, logChan, hitlChan, nil, testInventory(), nil)
 
 	updated, _ := shell.Update(watchtowerSnapshotsMsg{snapshots: testMemorySnapshots()})
 	shell = updated.(Shell)
@@ -303,7 +312,7 @@ func TestShell_InitialAutopilotViewFitsFallbackViewport(t *testing.T) {
 	if !strings.Contains(view, "WATCHTOWER | Entire Inventory") && !strings.Contains(view, "AUTOPILOT | Entire Inventory") {
 		t.Fatalf("expected shell chrome to remain visible on initial Autopilot render, got:\n%s", view)
 	}
-	if !strings.Contains(view, "COMMAND") {
+	if !strings.Contains(view, commandBarLabel) {
 		t.Fatalf("expected Autopilot command bar to remain visible on initial render, got:\n%s", view)
 	}
 }
@@ -338,7 +347,7 @@ func TestShell_InitialCopilotViewFitsFallbackViewport(t *testing.T) {
 	if !strings.Contains(view, "COPILOT") {
 		t.Fatalf("expected shell chrome to remain visible on initial Copilot render, got:\n%s", view)
 	}
-	if !strings.Contains(view, "COMMAND") {
+	if !strings.Contains(view, commandBarLabel) {
 		t.Fatalf("expected Copilot command bar to remain visible on initial render, got:\n%s", view)
 	}
 }
@@ -363,26 +372,67 @@ func TestShell_CopilotViewRespectsWindowResizeBounds(t *testing.T) {
 	}
 }
 
-func TestShell_CopilotQuitsOnQ(t *testing.T) {
+func TestShell_CopilotDoesNotQuitOnQ(t *testing.T) {
 	taskChan, logChan, hitlChan := testChannels()
 	shell := NewShell(taskChan, logChan, hitlChan, nil)
 
 	shell = leaderSwitch(t, shell, 'c')
 
 	_, cmd := shell.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'q'}})
-	if cmd == nil {
-		t.Fatal("expected quit command for 'q' in Copilot mode")
+	if isQuitCmd(cmd) {
+		t.Fatal("expected 'q' not to quit in Copilot mode")
+	}
+}
+
+func TestShell_CopilotQuitsOnSlashExit(t *testing.T) {
+	taskChan, logChan, hitlChan := testChannels()
+	shell := NewShell(taskChan, logChan, hitlChan, nil)
+
+	shell = leaderSwitch(t, shell, 'c')
+
+	for _, r := range "/exit" {
+		updated, _ := shell.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{r}})
+		shell = updated.(Shell)
 	}
 
-	msg := cmd()
-	if _, ok := msg.(tea.QuitMsg); !ok {
-		t.Fatalf("expected cmd to return tea.QuitMsg, got %T", msg)
+	_, cmd := shell.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	if !isQuitCmd(cmd) {
+		t.Fatal("expected '/exit' to quit in Copilot mode")
+	}
+}
+
+func TestShell_AutopilotDoesNotQuitOnQ(t *testing.T) {
+	taskChan, logChan, hitlChan := testChannels()
+	shell := NewShell(taskChan, logChan, hitlChan, nil)
+
+	shell = leaderSwitch(t, shell, 'a')
+
+	_, cmd := shell.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'q'}})
+	if isQuitCmd(cmd) {
+		t.Fatal("expected 'q' not to quit in Autopilot mode")
+	}
+}
+
+func TestShell_AutopilotQuitsOnSlashExit(t *testing.T) {
+	taskChan, logChan, hitlChan := testChannels()
+	shell := NewShell(taskChan, logChan, hitlChan, nil)
+
+	shell = leaderSwitch(t, shell, 'a')
+
+	for _, r := range "/exit" {
+		updated, _ := shell.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{r}})
+		shell = updated.(Shell)
+	}
+
+	_, cmd := shell.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	if !isQuitCmd(cmd) {
+		t.Fatal("expected '/exit' to quit in Autopilot mode")
 	}
 }
 
 func TestShell_WatchtowerEscalatesToAutopilotWithContext(t *testing.T) {
 	taskChan, logChan, hitlChan := testChannels()
-	shell := NewShellWithInventory(taskChan, logChan, hitlChan, nil, testInventory())
+	shell := NewShellWithInventory(taskChan, logChan, hitlChan, nil, testInventory(), nil)
 
 	updated, _ := shell.Update(tea.WindowSizeMsg{Width: 100, Height: 30})
 	shell = updated.(Shell)
@@ -409,7 +459,7 @@ func TestShell_WatchtowerEscalatesToAutopilotWithContext(t *testing.T) {
 
 func TestShell_WatchtowerEscalatesToCopilotWithContext(t *testing.T) {
 	taskChan, logChan, hitlChan := testChannels()
-	shell := NewShellWithInventory(taskChan, logChan, hitlChan, nil, testInventory())
+	shell := NewShellWithInventory(taskChan, logChan, hitlChan, nil, testInventory(), nil)
 
 	updated, _ := shell.Update(tea.WindowSizeMsg{Width: 100, Height: 30})
 	shell = updated.(Shell)
@@ -436,7 +486,7 @@ func TestShell_WatchtowerEscalatesToCopilotWithContext(t *testing.T) {
 
 func TestShell_WatchtowerEscalatesToAutopilotCompactHeight(t *testing.T) {
 	taskChan, logChan, hitlChan := testChannels()
-	shell := NewShellWithInventory(taskChan, logChan, hitlChan, nil, testInventory())
+	shell := NewShellWithInventory(taskChan, logChan, hitlChan, nil, testInventory(), nil)
 
 	updated, _ := shell.Update(tea.WindowSizeMsg{Width: 80, Height: 15})
 	shell = updated.(Shell)
@@ -461,7 +511,7 @@ func TestShell_WatchtowerEscalatesToAutopilotCompactHeight(t *testing.T) {
 
 	view := shell.View()
 	assertRenderedWithinBounds(t, view, 80, 15)
-	for _, label := range []string{"WATCHTOWER HANDOFF", "db-master", "MEMORY", "PLAN", "TRANSCRIPT", "COMMAND"} {
+	for _, label := range []string{"WATCHTOWER HANDOFF", "db-master", "MEMORY", "PLAN", "TRANSCRIPT", commandBarLabel} {
 		if !strings.Contains(view, label) {
 			t.Fatalf("expected compact escalated Autopilot shell view to contain %q, got:\n%s", label, view)
 		}
@@ -470,7 +520,7 @@ func TestShell_WatchtowerEscalatesToAutopilotCompactHeight(t *testing.T) {
 
 func TestShell_WatchtowerEscalatesToCopilotCompactHeight(t *testing.T) {
 	taskChan, logChan, hitlChan := testChannels()
-	shell := NewShellWithInventory(taskChan, logChan, hitlChan, nil, testInventory())
+	shell := NewShellWithInventory(taskChan, logChan, hitlChan, nil, testInventory(), nil)
 
 	updated, _ := shell.Update(tea.WindowSizeMsg{Width: 80, Height: 21})
 	shell = updated.(Shell)
@@ -495,7 +545,7 @@ func TestShell_WatchtowerEscalatesToCopilotCompactHeight(t *testing.T) {
 
 	view := shell.View()
 	assertRenderedWithinBounds(t, view, 80, 21)
-	for _, label := range []string{"WATCHTOWER HANDOFF", "db-master", "MEMORY", "TERMINAL", "ADVISORY", "GUIDANCE", "COMMAND"} {
+	for _, label := range []string{"WATCHTOWER HANDOFF", "db-master", "MEMORY", "TERMINAL", "ADVISORY", "GUIDANCE", commandBarLabel} {
 		if !strings.Contains(view, label) {
 			t.Fatalf("expected compact escalated Copilot shell view to contain %q, got:\n%s", label, view)
 		}
@@ -515,7 +565,7 @@ func TestShell_AutopilotViewRendersCommandBarAndPanes(t *testing.T) {
 	if !strings.Contains(view, "AUTOPILOT") {
 		t.Fatalf("expected Autopilot view to render mode label, got:\n%s", view)
 	}
-	if !strings.Contains(view, "COMMAND") {
+	if !strings.Contains(view, commandBarLabel) {
 		t.Fatalf("expected Autopilot view to render command bar label, got:\n%s", view)
 	}
 	if !strings.Contains(view, "PLAN") {
@@ -539,7 +589,7 @@ func TestShell_CopilotViewRendersCommandBarAndPanes(t *testing.T) {
 	if !strings.Contains(view, "COPILOT") {
 		t.Fatalf("expected Copilot view to render mode label, got:\n%s", view)
 	}
-	if !strings.Contains(view, "COMMAND") {
+	if !strings.Contains(view, commandBarLabel) {
 		t.Fatalf("expected Copilot view to render command bar label, got:\n%s", view)
 	}
 	if !strings.Contains(view, "TERMINAL") {

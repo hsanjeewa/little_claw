@@ -1,12 +1,16 @@
 package tui
 
 import (
+	"context"
+	"fmt"
 	"strings"
 
 	"github.com/charmbracelet/bubbles/textinput"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 	"github.com/charmbracelet/x/ansi"
+
+	"github.com/devops/agent/internal/domain/agent"
 )
 
 const (
@@ -24,6 +28,12 @@ type AutopilotModel struct {
 	plan         []string
 	transcript   []string
 	handoff      *WatchtowerEscalationPayload
+	run          AutopilotRun
+	llmClient    *LLMClient
+	executor     agent.CommandExecutor
+	taskChan     chan agent.Task
+	logChan      chan agent.ExecutionLog
+	hitlChan     chan agent.HitlRequest
 }
 
 func NewAutopilotModel() AutopilotModel {
@@ -36,15 +46,51 @@ func NewAutopilotModel() AutopilotModel {
 	return AutopilotModel{
 		focusedPane:  autopilotPaneCommand,
 		commandInput: input,
-		plan: []string{
-			"1. Discover inventory",
-			"2. Generate plan",
-			"3. Execute autonomously",
-		},
-		transcript: []string{
-			"Waiting for first task...",
+		plan:         []string{},
+		transcript:   []string{},
+		run: AutopilotRun{
+			State:      RunStateDrafting,
+			Approved:   false,
+			MaxRetries: defaultMaxRetries,
 		},
 	}
+}
+
+func NewAutopilotModelWithLLMClient(llmClient *LLMClient) AutopilotModel {
+	model := NewAutopilotModel()
+	model.llmClient = llmClient
+	return model
+}
+
+func NewAutopilotModelWithChannels(
+	taskChan chan agent.Task,
+	logChan chan agent.ExecutionLog,
+	hitlChan chan agent.HitlRequest,
+) AutopilotModel {
+	model := NewAutopilotModel()
+	model.taskChan = taskChan
+	model.logChan = logChan
+	model.hitlChan = hitlChan
+	return model
+}
+
+func NewAutopilotModelWithAllDependencies(
+	llmClient *LLMClient,
+	taskChan chan agent.Task,
+	logChan chan agent.ExecutionLog,
+	hitlChan chan agent.HitlRequest,
+) AutopilotModel {
+	model := NewAutopilotModel()
+	model.llmClient = llmClient
+	model.taskChan = taskChan
+	model.logChan = logChan
+	model.hitlChan = hitlChan
+	return model
+}
+
+func (m AutopilotModel) WithExecutor(executor agent.CommandExecutor) AutopilotModel {
+	m.executor = executor
+	return m
 }
 
 func (m AutopilotModel) Init() tea.Cmd {
@@ -58,6 +104,125 @@ func (m AutopilotModel) ApplyWatchtowerEscalation(payload WatchtowerEscalationPa
 
 func (m AutopilotModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
+	case GeneratePlanMsg:
+		m.transcript = append(m.transcript, "> "+msg.Goal)
+		return m, m.handlePlanGeneration(msg.Goal)
+	case PlanGeneratedMsg:
+		if msg.Error != nil {
+			errorMsg := TranscriptEntry{
+				Kind: TranscriptSystem,
+				Text: fmt.Sprintf("Plan generation failed: %v", msg.Error),
+			}
+			m.transcript = append(m.transcript, errorMsg.String())
+		} else {
+			reasoningMsg := TranscriptEntry{
+				Kind: TranscriptAgent,
+				Text: msg.Reasoning,
+			}
+			m.transcript = append(m.transcript, reasoningMsg.String())
+
+			planStrings := make([]string, len(msg.Plan))
+			for i, step := range msg.Plan {
+				mutativeFlag := ""
+				if step.IsMutative {
+					mutativeFlag = "[MUTATIVE]"
+				}
+				planStrings[i] = fmt.Sprintf("%d. %s %s\n   %s", i+1, step.Description, mutativeFlag, step.Command)
+			}
+			m.plan = planStrings
+			m.run = AutopilotRun{
+				State:      RunStateReady,
+				Plan:       msg.Plan,
+				Approved:   false,
+				MaxRetries: defaultMaxRetries,
+			}
+		}
+		return m, nil
+	case PlanApprovedMsg:
+		m.run.Approved = true
+		m.run.State = RunStateExecuting
+		if m.executor != nil && len(m.run.Plan) > 0 {
+			task, err := buildTaskFromStep(m.run.Plan[0])
+			if err != nil {
+				return m, nil
+			}
+			return m, RunPlanStep(context.Background(), 0, task, m.executor)
+		}
+		m.submitPlanTasks()
+		return m, nil
+	case PlanRejectedMsg:
+		m.run.State = RunStateDrafting
+		m.run.Plan = nil
+		m.run.Approved = false
+		return m, nil
+	case TaskCompletedMsg:
+		m.transcript = append(m.transcript, TranscriptEntry{
+			Kind: TranscriptSystem,
+			Text: fmt.Sprintf("Step completed: %s", msg.Output),
+		}.String())
+		m.run.LastCompletedStep = msg.StepIndex
+		if msg.StepIndex+1 >= len(m.run.Plan) {
+			m.run.State = RunStateCompleted
+			return m, nil
+		}
+		nextStep := msg.StepIndex + 1
+		if m.executor != nil {
+			task, err := buildTaskFromStep(m.run.Plan[nextStep])
+			if err != nil {
+				return m, nil
+			}
+			return m, RunPlanStep(context.Background(), nextStep, task, m.executor)
+		}
+		return m, nil
+	case TaskFailedMsg:
+		m.transcript = append(m.transcript, TranscriptEntry{
+			Kind: TranscriptSystem,
+			Text: fmt.Sprintf("Step failed: %s", msg.Error),
+		}.String())
+		m.run.OriginalError = msg.Error
+		return m.triggerRecovery(msg.Error)
+	case ExecutionProgressMsg:
+		m.run.CurrentHost = msg.Progress.CurrentHost
+		m.run.CurrentStep = msg.Progress.CurrentStep
+		return m, nil
+	case RecoveryPlanGeneratedMsg:
+		m.run.RecoveryPlan = msg.Plan
+		m.run.State = RunStateReady
+		recoveryPlanText := []string{
+			"--- RECOVERY PLAN (Attempt " + fmt.Sprintf("%d/%d", m.run.RetryCount, m.run.MaxRetries) + ") ---",
+			"Original Error: " + m.run.OriginalError,
+			"",
+		}
+		for i, step := range msg.Plan {
+			flag := ""
+			if step.IsMutative {
+				flag = "⚠️ MUTATIVE"
+			}
+			recoveryPlanText = append(recoveryPlanText, fmt.Sprintf("%d. %s %s", i+1, step.Description, flag))
+		}
+		recoveryPlanText = append(recoveryPlanText, "", "[APPROVE RECOVERY] Press 'a'", "[REJECT] Press 'r'")
+		m.plan = recoveryPlanText
+		return m, nil
+	case RecoveryApprovedMsg:
+		if len(m.run.RecoveryPlan) > 0 {
+			m.run.Plan = m.run.RecoveryPlan
+			m.run.State = RunStateExecuting
+			m.transcript = append(m.transcript, TranscriptEntry{
+				Kind: TranscriptSystem,
+				Text: fmt.Sprintf("🔄 Executing recovery plan (attempt %d/%d)", m.run.RetryCount, m.run.MaxRetries),
+			}.String())
+			return m, func() tea.Msg {
+				return PlanApprovedMsg{}
+			}
+		}
+		return m, nil
+	case RecoveryRejectedMsg:
+		m.run.State = RunStateFailed
+		m.transcript = append(m.transcript, TranscriptEntry{
+			Kind: TranscriptSystem,
+			Text: "❌ Recovery rejected by operator",
+		}.String())
+		return m, nil
 	case tea.WindowSizeMsg:
 		m.width = msg.Width
 		m.height = msg.Height
@@ -67,10 +232,38 @@ func (m AutopilotModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case tea.KeyTab:
 			m.cycleFocus()
 			return m, nil
+		case tea.KeyRunes:
+			if m.run.State == RunStateReady {
+				switch string(msg.Runes) {
+				case "a":
+					if len(m.run.RecoveryPlan) > 0 {
+						return m, func() tea.Msg { return RecoveryApprovedMsg{} }
+					}
+					return m, func() tea.Msg { return PlanApprovedMsg{} }
+				case "r":
+					if len(m.run.RecoveryPlan) > 0 {
+						return m, func() tea.Msg { return RecoveryRejectedMsg{} }
+					}
+					return m, func() tea.Msg { return PlanRejectedMsg{} }
+				}
+			}
 		case tea.KeyEnter:
 			if m.focusedPane == autopilotPaneCommand {
 				cmd := strings.TrimSpace(m.commandInput.Value())
 				if cmd != "" {
+					if cmd == "/exit" {
+						return m, tea.Quit
+					}
+					if cmd == "/targets" {
+						m.commandInput.Reset()
+						return m, func() tea.Msg {
+							return OpenTargetSelectionMsg{}
+						}
+					}
+					if !strings.HasPrefix(cmd, "/") {
+						m.commandInput.Reset()
+						return m, m.GeneratePlan(cmd)
+					}
 					m.transcript = append(m.transcript, "> "+cmd)
 					m.commandInput.Reset()
 				}
@@ -113,8 +306,12 @@ func (m AutopilotModel) View() string {
 	leftWidth := max(width/2, 1)
 	rightWidth := max(width-leftWidth, 1)
 
-	plan := m.renderPane("PLAN", m.plan, leftWidth, panesHeight, m.focusedPane == autopilotPanePlan)
-	transcript := m.renderPane("TRANSCRIPT", m.transcript, rightWidth, panesHeight, m.focusedPane == autopilotPaneTranscript)
+	planContent := m.plan
+	if m.run.State == RunStateReady {
+		planContent = append(m.plan, "", "[APPROVE] Press 'a'", "[REJECT] Press 'r'")
+	}
+	plan := renderPane("PLAN", planContent, leftWidth, panesHeight, m.focusedPane == autopilotPanePlan)
+	transcript := renderPane("TRANSCRIPT", m.transcript, rightWidth, panesHeight, m.focusedPane == autopilotPaneTranscript)
 
 	panes := lipgloss.JoinHorizontal(lipgloss.Top, plan, transcript)
 	sections := []string{panes, commandBar}
@@ -147,7 +344,7 @@ func (m AutopilotModel) commandWidth() int {
 	if w == 0 {
 		w = 80
 	}
-	labelWidth := lipgloss.Width("COMMAND ")
+	labelWidth := lipgloss.Width(commandBarLabel + " ")
 	padding := 4
 	available := w - labelWidth - padding
 	available = max(available, 20)
@@ -155,31 +352,7 @@ func (m AutopilotModel) commandWidth() int {
 }
 
 func (m AutopilotModel) renderCommandBar() string {
-	label := lipgloss.NewStyle().Bold(true).Render("COMMAND")
+	label := lipgloss.NewStyle().Bold(true).Render(commandBarLabel)
 	bar := lipgloss.JoinHorizontal(lipgloss.Center, label, " ", m.commandInput.View())
 	return bar
-}
-
-func (m AutopilotModel) renderPane(title string, lines []string, width, height int, active bool) string {
-	style := panelStyle
-	if active {
-		style = activePanelStyle
-	}
-
-	frameWidth := style.GetHorizontalFrameSize()
-	frameHeight := style.GetVerticalFrameSize()
-	styleWidth := max(width-frameWidth, 0)
-	styleHeight := max(height-frameHeight, 0)
-	innerWidth := max(styleWidth-style.GetHorizontalPadding(), 1)
-	innerHeight := max(styleHeight-style.GetVerticalPadding()-1, 0)
-
-	header := lipgloss.NewStyle().Bold(true).Render(title)
-	body := strings.Join(lines, "\n")
-	if body == "" {
-		body = " "
-	}
-
-	bodyStyle := lipgloss.NewStyle().Width(innerWidth).Height(innerHeight)
-	content := lipgloss.JoinVertical(lipgloss.Left, header, bodyStyle.Render(body))
-	return style.Width(styleWidth).Height(styleHeight).Render(content)
 }
