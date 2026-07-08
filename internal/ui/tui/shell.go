@@ -40,15 +40,20 @@ func (m Mode) String() string {
 // Shell is the root Bubble Tea model. It wraps the existing Watchtower TUI
 // and provides interactive layout skeletons for Autopilot and Copilot.
 type Shell struct {
-	mode       Mode
-	width      int
-	height     int
-	leaderMode bool
-	inventory  []inventory.TargetHost
-	scope      TargetScope
-	watchtower tea.Model
-	autopilot  tea.Model
-	copilot    tea.Model
+	mode        Mode
+	width       int
+	height      int
+	leaderMode  bool
+	inventory   []inventory.TargetHost
+	scope       TargetScope
+	watchtower  tea.Model
+	autopilot   tea.Model
+	copilot     tea.Model
+	activeModal tea.Model
+	executor    agent.CommandExecutor
+	taskChan    chan agent.Task
+	logChan     chan agent.ExecutionLog
+	hitlChan    chan agent.HitlRequest
 }
 
 type simulatorBootstrapMsg struct {
@@ -66,13 +71,27 @@ func NewShell(
 	hitlChan chan agent.HitlRequest,
 	initialTasks []agent.Task,
 ) Shell {
+	return NewShellWithLLMClient(taskChan, logChan, hitlChan, initialTasks, nil)
+}
+
+// NewShellWithLLMClient creates the root shell model with an optional LLMClient for Autopilot.
+func NewShellWithLLMClient(
+	taskChan chan agent.Task,
+	logChan chan agent.ExecutionLog,
+	hitlChan chan agent.HitlRequest,
+	initialTasks []agent.Task,
+	llmClient *LLMClient,
+) Shell {
 	initialScope := TargetScope{Kind: ScopeEntireInventory}
 	return Shell{
 		mode:       ModeWatchtower,
 		scope:      initialScope,
 		watchtower: NewWatchtowerModel(taskChan, logChan, hitlChan, initialTasks, nil, initialScope, nil),
-		autopilot:  NewAutopilotModel(),
+		autopilot:  NewAutopilotModelWithAllDependencies(llmClient, taskChan, logChan, hitlChan),
 		copilot:    NewCopilotModel(),
+		taskChan:   taskChan,
+		logChan:    logChan,
+		hitlChan:   hitlChan,
 	}
 }
 
@@ -84,8 +103,9 @@ func NewShellWithInventory(
 	hitlChan chan agent.HitlRequest,
 	initialTasks []agent.Task,
 	inv []inventory.TargetHost,
+	llmClient *LLMClient,
 ) Shell {
-	return NewShellWithInventoryAndCollector(taskChan, logChan, hitlChan, initialTasks, inv, nil)
+	return NewShellWithInventoryAndCollector(taskChan, logChan, hitlChan, initialTasks, inv, llmClient, nil)
 }
 
 // NewShellWithInventoryAndCollector creates the root shell model with
@@ -96,9 +116,10 @@ func NewShellWithInventoryAndCollector(
 	hitlChan chan agent.HitlRequest,
 	initialTasks []agent.Task,
 	inv []inventory.TargetHost,
+	llmClient *LLMClient,
 	collector MemorySnapshotCollector,
 ) Shell {
-	return NewShellWithInventoryAndCollectors(taskChan, logChan, hitlChan, initialTasks, inv, collector, nil)
+	return NewShellWithInventoryAndCollectors(taskChan, logChan, hitlChan, initialTasks, inv, llmClient, collector, nil)
 }
 
 // NewShellWithInventoryAndCollectors creates the root shell model with
@@ -109,10 +130,11 @@ func NewShellWithInventoryAndCollectors(
 	hitlChan chan agent.HitlRequest,
 	initialTasks []agent.Task,
 	inv []inventory.TargetHost,
+	llmClient *LLMClient,
 	memoryCollector MemorySnapshotCollector,
 	cpuCollector CPUSnapshotCollector,
 ) Shell {
-	return NewShellWithInventoryAndAllCollectors(taskChan, logChan, hitlChan, initialTasks, inv, memoryCollector, cpuCollector, nil, nil, 0)
+	return NewShellWithInventoryAndAllCollectors(taskChan, logChan, hitlChan, initialTasks, inv, llmClient, memoryCollector, cpuCollector, nil, nil, 0)
 }
 
 func NewShellWithInventoryAndAllCollectors(
@@ -121,16 +143,25 @@ func NewShellWithInventoryAndAllCollectors(
 	hitlChan chan agent.HitlRequest,
 	initialTasks []agent.Task,
 	inv []inventory.TargetHost,
+	llmClient *LLMClient,
 	memoryCollector MemorySnapshotCollector,
 	cpuCollector CPUSnapshotCollector,
 	storageCollector StorageSnapshotCollector,
 	networkCollector NetworkSnapshotCollector,
 	watchtowerRefreshInterval time.Duration,
 ) Shell {
-	s := NewShell(taskChan, logChan, hitlChan, initialTasks)
+	s := NewShellWithLLMClient(taskChan, logChan, hitlChan, initialTasks, llmClient)
 	s.inventory = cloneHosts(inv)
 	s.scope = TargetScope{Kind: ScopeEntireInventory, Hosts: cloneHosts(inv)}
 	s.watchtower = NewWatchtowerModelWithAllCollectors(taskChan, logChan, hitlChan, initialTasks, inv, s.scope, memoryCollector, cpuCollector, storageCollector, networkCollector, watchtowerRefreshInterval)
+	return s
+}
+
+func (s Shell) WithExecutor(executor agent.CommandExecutor) Shell {
+	s.executor = executor
+	if autopilot, ok := s.autopilot.(AutopilotModel); ok {
+		s.autopilot = autopilot.WithExecutor(executor)
+	}
 	return s
 }
 
@@ -157,6 +188,19 @@ func (s Shell) Inventory() []inventory.TargetHost {
 // ScopeBadge returns the human-readable scope description for the shell chrome.
 func (s Shell) ScopeBadge() string {
 	return s.scope.String()
+}
+
+func (s Shell) runStateBadge() string {
+	switch s.mode {
+	case ModeAutopilot:
+		autopilot, ok := s.autopilot.(AutopilotModel)
+		if ok {
+			return string(autopilot.run.State)
+		}
+		return "N/A"
+	default:
+		return "N/A"
+	}
 }
 
 // SetEntireInventory resets the scope to the full inventory.
@@ -265,10 +309,6 @@ func (s Shell) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return s, nil
 		case "ctrl+c":
 			return s, tea.Quit
-		case "q":
-			if s.mode != ModeWatchtower {
-				return s, tea.Quit
-			}
 		}
 	case tea.WindowSizeMsg:
 		s.width = msg.Width
@@ -289,6 +329,29 @@ func (s Shell) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return s, cmd
 	case watchtowerEscalationMsg:
 		return s.applyWatchtowerEscalation(msg.Payload)
+	case OpenTargetSelectionMsg:
+		s.activeModal = NewTargetSelectionModel(s.inventory)
+		return s, nil
+	case TargetSelectionConfirmedMsg:
+		aliases := make([]string, len(msg.hosts))
+		for i, h := range msg.hosts {
+			aliases[i] = h.Alias
+		}
+		s, err := s.SelectHosts(aliases)
+		if err != nil {
+			return s, nil
+		}
+		s.activeModal = nil
+		return s, nil
+	case TargetSelectionCancelledMsg:
+		s.activeModal = nil
+		return s, nil
+	}
+
+	if s.activeModal != nil {
+		updated, cmd := s.activeModal.Update(msg)
+		s.activeModal = updated
+		return s, cmd
 	}
 
 	child := s.activeChild()
@@ -311,13 +374,21 @@ func (s Shell) View() string {
 		w = 80
 	}
 
-	chromeText := fmt.Sprintf("%s | %s", s.StatusBadge(), s.ScopeBadge())
+	chromeText := fmt.Sprintf("%s | %s | State: %s", s.StatusBadge(), s.ScopeBadge(), s.runStateBadge())
 	if s.leaderMode {
 		chromeText += " | LEADER: w/a/c/z"
 	}
 	chrome := shellChromeStyle.Width(w - shellChromeStyle.GetHorizontalFrameSize()).Render(chromeText)
 
-	return lipgloss.JoinVertical(lipgloss.Left, chrome, s.activeChild().View())
+	content := s.activeChild().View()
+
+	if s.activeModal != nil {
+		modalView := s.activeModal.View()
+		overlay := centeredModal(modalView, w, s.height)
+		content = lipgloss.JoinVertical(lipgloss.Left, content, overlay)
+	}
+
+	return lipgloss.JoinVertical(lipgloss.Left, chrome, content)
 }
 
 func (s Shell) activeChild() tea.Model {

@@ -47,7 +47,13 @@ func main() {
 
 	analyzer := llm.NewLocalOpenAIClient(cfg.LLM.BaseURL, apiKey, cfg.LLM.Model)
 
-	masterSecret := []byte("a-very-secret-key-32-bytes-long!")
+	autopilotLLMClient := tui.NewLLMClient(tui.LLMConfig{
+		BaseURL: cfg.LLM.BaseURL,
+		APIKey:  apiKey,
+		Model:   cfg.LLM.Model,
+	})
+
+	masterSecret := []byte("a-very-secret-key-32-bytes-long!!")
 	vault := security.NewLocalEncryptedVault(masterSecret)
 
 	privateKeyData, err := os.ReadFile("test_keys/id_ed25519")
@@ -108,7 +114,7 @@ func main() {
 		}
 	}
 
-	model := tui.NewShellWithInventoryAndAllCollectors(taskChan, logChan, hitlChan, tasks, targets, memoryCollector, cpuCollector, storageCollector, networkCollector, watchtowerRefreshInterval)
+	model := tui.NewShellWithInventoryAndAllCollectors(taskChan, logChan, hitlChan, tasks, targets, autopilotLLMClient, memoryCollector, cpuCollector, storageCollector, networkCollector, watchtowerRefreshInterval).WithExecutor(sshClient)
 
 	if watchtowerBackend != "simulator" {
 		go func() {
