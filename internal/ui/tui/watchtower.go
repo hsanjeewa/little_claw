@@ -342,12 +342,23 @@ func (m WatchtowerModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.clampSelection()
 		return m, nil
 	case watchtowerRefreshTickMsg:
-		if m.refreshing || m.currentCollectorMissing() {
+		if m.refreshing {
 			return m, m.refreshTickCmd()
 		}
 		hosts := m.hostsForRefresh()
 		m.refreshing = true
-		return m, tea.Batch(m.refreshCurrentFamilyCmd(hosts), m.refreshTickCmd())
+		cmds := []tea.Cmd{m.refreshTickCmd()}
+		for _, cmd := range []tea.Cmd{
+			m.refreshMemoryCmd(hosts),
+			m.refreshCPUCmd(hosts),
+			m.refreshStorageCmd(hosts),
+			m.refreshNetworkCmd(hosts),
+		} {
+			if cmd != nil {
+				cmds = append(cmds, cmd)
+			}
+		}
+		return m, tea.Batch(cmds...)
 	case TaskUpdatedMsg, LogReceivedMsg, HitlRequestMsg:
 		updated, cmd := m.legacy.Update(msg)
 		m.legacy = updated.(Model)
@@ -674,34 +685,32 @@ func (m WatchtowerModel) renderAggregatePane(width, height int) string {
 		return m.renderPanelStack(labels, bodies, width, height, activeIndex)
 	}
 	if width >= 60 && height >= 16 {
-		topHeight := max(height/3, 1)
-		bottomHeight := max(height-topHeight, 1)
-		middleHeight := max((bottomHeight*3)/5, 1)
-		networkHeight := max(bottomHeight-middleHeight, 1)
-		memoryWidth := max(width/2, 1)
-		storageWidth := max(width-memoryWidth, 1)
-		cpu := m.renderPanel(labels[1], bodies[1], width, topHeight, activeIndex == 1)
-		middle := lipgloss.JoinHorizontal(
+		halfWidth := max(width/2, 1)
+		halfHeight := max(height/2, 1)
+		top := lipgloss.JoinHorizontal(
 			lipgloss.Top,
-			m.renderPanel(labels[0], bodies[0], memoryWidth, middleHeight, activeIndex == 0),
-			m.renderPanel(labels[2], bodies[2], storageWidth, middleHeight, activeIndex == 2),
+			m.renderPanel(labels[1], bodies[1], halfWidth, halfHeight, activeIndex == 1),
+			m.renderPanel(labels[0], bodies[0], halfWidth, halfHeight, activeIndex == 0),
 		)
-		network := m.renderPanel(labels[3], bodies[3], width, networkHeight, activeIndex == 3)
-		return lipgloss.JoinVertical(lipgloss.Left, cpu, middle, network)
+		bottom := lipgloss.JoinHorizontal(
+			lipgloss.Top,
+			m.renderPanel(labels[2], bodies[2], halfWidth, halfHeight, activeIndex == 2),
+			m.renderPanel(labels[3], bodies[3], halfWidth, halfHeight, activeIndex == 3),
+		)
+		return lipgloss.JoinVertical(lipgloss.Left, top, bottom)
 	}
-	leftWidth := max(width/2, 1)
-	rightWidth := max(width-leftWidth, 1)
-	topHeight := max((height*3)/5, 1)
+	halfWidth := max(width/2, 1)
+	topHeight := max(height/2, 1)
 	bottomHeight := max(height-topHeight, 1)
 	top := lipgloss.JoinHorizontal(
 		lipgloss.Top,
-		m.renderPanel(labels[1], bodies[1], rightWidth, topHeight, activeIndex == 1),
-		m.renderPanel(labels[0], bodies[0], leftWidth, topHeight, activeIndex == 0),
+		m.renderPanel(labels[1], bodies[1], halfWidth, topHeight, activeIndex == 1),
+		m.renderPanel(labels[0], bodies[0], halfWidth, topHeight, activeIndex == 0),
 	)
 	bottom := lipgloss.JoinHorizontal(
 		lipgloss.Top,
-		m.renderPanel(labels[2], bodies[2], leftWidth, bottomHeight, activeIndex == 2),
-		m.renderPanel(labels[3], bodies[3], rightWidth, bottomHeight, activeIndex == 3),
+		m.renderPanel(labels[2], bodies[2], halfWidth, bottomHeight, activeIndex == 2),
+		m.renderPanel(labels[3], bodies[3], halfWidth, bottomHeight, activeIndex == 3),
 	)
 	return lipgloss.JoinVertical(lipgloss.Left, top, bottom)
 }
@@ -734,21 +743,19 @@ func (m WatchtowerModel) renderDetailPane(width, height int) string {
 	if width < 52 || height < 14 {
 		return m.renderPanelStack(labels, bodies, width, height, m.detailFocus)
 	}
-	cpuWidth := max((width*3)/5, 1)
-	memoryWidth := max(width-cpuWidth, 1)
-	storageWidth := max((width*11)/20, 1)
-	networkWidth := max(width-storageWidth, 1)
-	topHeight := max((height*3)/5, 1)
+	halfWidth := max(width/2, 1)
+	halfHeight := max(height/2, 1)
+	topHeight := halfHeight
 	bottomHeight := max(height-topHeight, 1)
 	top := lipgloss.JoinHorizontal(
 		lipgloss.Top,
-		m.renderPanel(labels[1], bodies[1], cpuWidth, topHeight, m.detailFocus == 1),
-		m.renderPanel(labels[0], bodies[0], memoryWidth, topHeight, m.detailFocus == 0),
+		m.renderPanel(labels[1], bodies[1], halfWidth, topHeight, m.detailFocus == 1),
+		m.renderPanel(labels[0], bodies[0], halfWidth, topHeight, m.detailFocus == 0),
 	)
 	bottom := lipgloss.JoinHorizontal(
 		lipgloss.Top,
-		m.renderPanel(labels[2], bodies[2], storageWidth, bottomHeight, m.detailFocus == 2),
-		m.renderPanel(labels[3], bodies[3], networkWidth, bottomHeight, m.detailFocus == 3),
+		m.renderPanel(labels[2], bodies[2], halfWidth, bottomHeight, m.detailFocus == 2),
+		m.renderPanel(labels[3], bodies[3], halfWidth, bottomHeight, m.detailFocus == 3),
 	)
 	return lipgloss.JoinVertical(lipgloss.Left, top, bottom)
 }
@@ -970,7 +977,7 @@ func (m WatchtowerModel) renderSplitDashboard(width, height int) string {
 		return m.renderHostDetailBody(width, height)
 	}
 
-	leftWidth := max(min(width/3, width-24), 20)
+	leftWidth := max(width/2, 20)
 	rightWidth := max(width-leftWidth, 20)
 	left := m.renderPanel("FLEET MATRIX", m.renderHostsBody(), leftWidth, height, true)
 

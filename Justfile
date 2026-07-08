@@ -2,11 +2,11 @@
 
 # Build the agent binary (pure Go, no CGO required)
 build:
-	CGO_ENABLED=0 go build -o agent ./cmd/agent/main.go
+	CGO_ENABLED=0 go build -o small_claw ./cmd/agent/main.go
 
 # Run the agent
 run: build
-	./agent
+	./small_claw
 
 # Start simulated test servers via Docker Compose
 up:
@@ -38,4 +38,4 @@ docker-build:
 
 # Clean build artifacts
 clean:
-	rm -f agent agent.db
+	rm -f small_claw agent.db
