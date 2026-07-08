@@ -119,7 +119,7 @@ func (m AutopilotModel) submitPlanTasks() {
 	}
 
 	for _, step := range m.run.Plan {
-		task, err := buildTaskFromStep(step)
+		task, err := m.buildTaskFromStep(step)
 		if err != nil {
 			continue
 		}
@@ -127,13 +127,29 @@ func (m AutopilotModel) submitPlanTasks() {
 	}
 }
 
-func buildTaskFromStep(step llm.PlanStep) (agent.Task, error) {
+func (m AutopilotModel) buildTaskFromStep(step llm.PlanStep) (agent.Task, error) {
+	hostAlias := m.taskHostAlias
+	hostIP := m.taskHostIP
+	hostUser := m.taskHostUser
+	hostPort := m.taskHostPort
+	if hostAlias == "" {
+		hostAlias = "localhost"
+	}
+	if hostIP == "" {
+		hostIP = "127.0.0.1"
+	}
+	if hostUser == "" {
+		hostUser = "root"
+	}
+	if hostPort == 0 {
+		hostPort = 22
+	}
 	return agent.NewTask(
 		uuid.New().String(),
-		"localhost",
-		"127.0.0.1",
-		22,
-		"root",
+		hostAlias,
+		hostIP,
+		hostPort,
+		hostUser,
 		step.Command,
 		step.IsMutative,
 	)

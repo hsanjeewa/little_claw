@@ -8,17 +8,16 @@ build:
 run: build
 	./small_claw
 
-# Start simulated test servers via Docker Compose
+# Start simulated test servers via Docker
 up:
-	docker-compose up -d
+	docker rm -f devops-web-01 devops-db-01 2>/dev/null; \
+	docker run -d --name devops-web-01 --hostname web-prod-01 -p 2222:2222 -e USER_NAME=deployer -e SUDO_ACCESS=true -e PASSWORD_ACCESS=false -e PUBLIC_KEY="$(cat test_keys/id_ed25519.pub)" lscr.io/linuxserver/openssh-server:latest && \
+	docker run -d --name devops-db-01 --hostname db-master -p 2223:2222 -e USER_NAME=postgres -e SUDO_ACCESS=true -e PASSWORD_ACCESS=false -e PUBLIC_KEY="$(cat test_keys/id_ed25519.pub)" lscr.io/linuxserver/openssh-server:latest && \
+	echo "Waiting for containers to start..." && sleep 5 && echo "Done"
 
 # Stop simulated test servers
 down:
-	docker-compose down
-
-# View logs for test servers
-logs:
-	docker-compose logs -f
+	docker rm -f devops-web-01 devops-db-01 2>/dev/null; true
 
 # Format code
 fmt:

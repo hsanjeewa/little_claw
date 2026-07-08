@@ -17,8 +17,8 @@ func TestLLMIntegration_RealLLM(t *testing.T) {
 	apiKey := os.Getenv("OPENAI_API_KEY")
 	model := os.Getenv("LLM_MODEL")
 
-	if apiKey == "" {
-		t.Skip("OPENAI_API_KEY not set, skipping real LLM test")
+	if apiKey == "" || model == "" {
+		t.Skip("OPENAI_API_KEY or LLM_MODEL not set, skipping real LLM test")
 	}
 
 	client := llm.NewLocalOpenAIClient(baseURL, apiKey, model)

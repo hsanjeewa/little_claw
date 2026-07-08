@@ -34,6 +34,10 @@ type AutopilotModel struct {
 	taskChan     chan agent.Task
 	logChan      chan agent.ExecutionLog
 	hitlChan     chan agent.HitlRequest
+	taskHostAlias string
+	taskHostIP    string
+	taskHostUser  string
+	taskHostPort  int
 }
 
 func NewAutopilotModel() AutopilotModel {
@@ -93,6 +97,14 @@ func (m AutopilotModel) WithExecutor(executor agent.CommandExecutor) AutopilotMo
 	return m
 }
 
+func (m AutopilotModel) WithTargetHost(alias, ip, user string, port int) AutopilotModel {
+	m.taskHostAlias = alias
+	m.taskHostIP = ip
+	m.taskHostUser = user
+	m.taskHostPort = port
+	return m
+}
+
 func (m AutopilotModel) Init() tea.Cmd {
 	return nil
 }
@@ -142,7 +154,7 @@ func (m AutopilotModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.run.Approved = true
 		m.run.State = RunStateExecuting
 		if m.executor != nil && len(m.run.Plan) > 0 {
-			task, err := buildTaskFromStep(m.run.Plan[0])
+			task, err := m.buildTaskFromStep(m.run.Plan[0])
 			if err != nil {
 				return m, nil
 			}
@@ -167,7 +179,7 @@ func (m AutopilotModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		nextStep := msg.StepIndex + 1
 		if m.executor != nil {
-			task, err := buildTaskFromStep(m.run.Plan[nextStep])
+			task, err := m.buildTaskFromStep(m.run.Plan[nextStep])
 			if err != nil {
 				return m, nil
 			}

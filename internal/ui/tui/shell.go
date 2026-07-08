@@ -154,15 +154,30 @@ func NewShellWithInventoryAndAllCollectors(
 	s.inventory = cloneHosts(inv)
 	s.scope = TargetScope{Kind: ScopeEntireInventory, Hosts: cloneHosts(inv)}
 	s.watchtower = NewWatchtowerModelWithAllCollectors(taskChan, logChan, hitlChan, initialTasks, inv, s.scope, memoryCollector, cpuCollector, storageCollector, networkCollector, watchtowerRefreshInterval)
+	if autopilot, ok := s.autopilot.(AutopilotModel); ok && len(inv) > 0 {
+		s.autopilot = autopilot.WithTargetHost(inv[0].Alias, inv[0].IP, inv[0].User, inv[0].Port)
+	}
 	return s
 }
 
 func (s Shell) WithExecutor(executor agent.CommandExecutor) Shell {
 	s.executor = executor
 	if autopilot, ok := s.autopilot.(AutopilotModel); ok {
-		s.autopilot = autopilot.WithExecutor(executor)
+		host := s.autopilotHost()
+		s.autopilot = autopilot.WithExecutor(executor).WithTargetHost(host.Alias, host.IP, host.User, host.Port)
 	}
 	return s
+}
+
+func (s Shell) autopilotHost() inventory.TargetHost {
+	hosts := s.scope.Hosts
+	if len(hosts) == 0 {
+		hosts = s.inventory
+	}
+	if len(hosts) > 0 {
+		return hosts[0]
+	}
+	return inventory.TargetHost{Alias: "localhost", IP: "127.0.0.1", Port: 22, User: "root"}
 }
 
 // ActiveMode returns the currently selected shell mode.

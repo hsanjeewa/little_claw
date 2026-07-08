@@ -8,8 +8,8 @@ import (
 )
 
 func TestAutopilotModel_handlePlanGeneration_UsesLLMClient(t *testing.T) {
-	if os.Getenv("OPENAI_API_KEY") == "" {
-		t.Skip("Skipping LLM integration test - OPENAI_API_KEY not set")
+	if os.Getenv("OPENAI_API_KEY") == "" || os.Getenv("LLM_MODEL") == "" {
+		t.Skip("Skipping LLM integration test - OPENAI_API_KEY or LLM_MODEL not set")
 	}
 
 	llmClient := &LLMClient{

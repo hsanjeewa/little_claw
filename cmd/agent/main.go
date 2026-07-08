@@ -23,7 +23,7 @@ import (
 )
 
 func main() {
-	_ = godotenv.Load()
+	_ = godotenv.Overload()
 
 	cfg, err := config.LoadConfig("config/config.toml")
 	if err != nil {
@@ -53,7 +53,7 @@ func main() {
 		Model:   cfg.LLM.Model,
 	})
 
-	masterSecret := []byte("a-very-secret-key-32-bytes-long!!")
+	masterSecret := []byte("a-very-secret-key-32-bytes-long!")
 	vault := security.NewLocalEncryptedVault(masterSecret)
 
 	privateKeyData, err := os.ReadFile("test_keys/id_ed25519")

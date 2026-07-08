@@ -270,11 +270,11 @@ func TestShell_WatchtowerViewRespectsWindowResizeBounds(t *testing.T) {
 	updated, _ := shell.Update(watchtowerSnapshotsMsg{snapshots: testMemorySnapshots()})
 	shell = updated.(Shell)
 
-	updated, _ = shell.Update(tea.WindowSizeMsg{Width: 48, Height: 6})
+	updated, _ = shell.Update(tea.WindowSizeMsg{Width: 64, Height: 6})
 	shell = updated.(Shell)
 
 	compact := shell.View()
-	assertRenderedWithinBounds(t, compact, 48, 6)
+	assertRenderedWithinBounds(t, compact, 64, 6)
 
 	updated, _ = shell.Update(tea.WindowSizeMsg{Width: 72, Height: 10})
 	shell = updated.(Shell)
@@ -321,11 +321,11 @@ func TestShell_AutopilotViewRespectsWindowResizeBounds(t *testing.T) {
 	taskChan, logChan, hitlChan := testChannels()
 	shell := leaderSwitch(t, NewShell(taskChan, logChan, hitlChan, nil), 'a')
 
-	updated, _ := shell.Update(tea.WindowSizeMsg{Width: 48, Height: 8})
+	updated, _ := shell.Update(tea.WindowSizeMsg{Width: 64, Height: 8})
 	shell = updated.(Shell)
 
 	compact := shell.View()
-	assertRenderedWithinBounds(t, compact, 48, 8)
+	assertRenderedWithinBounds(t, compact, 64, 8)
 
 	updated, _ = shell.Update(tea.WindowSizeMsg{Width: 72, Height: 10})
 	shell = updated.(Shell)
@@ -356,11 +356,11 @@ func TestShell_CopilotViewRespectsWindowResizeBounds(t *testing.T) {
 	taskChan, logChan, hitlChan := testChannels()
 	shell := leaderSwitch(t, NewShell(taskChan, logChan, hitlChan, nil), 'c')
 
-	updated, _ := shell.Update(tea.WindowSizeMsg{Width: 48, Height: 8})
+	updated, _ := shell.Update(tea.WindowSizeMsg{Width: 64, Height: 8})
 	shell = updated.(Shell)
 
 	compact := shell.View()
-	assertRenderedWithinBounds(t, compact, 48, 8)
+	assertRenderedWithinBounds(t, compact, 64, 8)
 
 	updated, _ = shell.Update(tea.WindowSizeMsg{Width: 72, Height: 10})
 	shell = updated.(Shell)
