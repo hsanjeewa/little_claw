@@ -1,10 +1,22 @@
 # Justfile for devops-agent
 
+# Dev vault master key. This is exported into the environment for the recipes
+# below so the encrypted vault.enc can be opened. It is NOT committed as a real
+# secret — override LITTLE_CLAW_MASTER_KEY in production (CI secret / secret
+# manager) so vault.enc is protected by a real key.
+export LITTLE_CLAW_MASTER_KEY := "a-very-secret-key-32-bytes-long!"
+
 # Build the agent binary (pure Go, no CGO required)
 build:
 	CGO_ENABLED=0 go build -o small_claw ./cmd/agent/main.go
 
-# Run the agent
+# Initialize the encrypted vault (vault.enc) from .env secrets (OPENAI_API_KEY,
+# SUDO_PASS_*) + dev SSH keys. Headless — does not launch the TUI. Run once,
+# then `just run`. After this, OPENAI_API_KEY can be removed from .env.
+vault-init: build
+	./small_claw init-vault
+
+# Run the agent (master key injected via env; vault.enc holds encrypted secrets)
 run: build
 	./small_claw
 

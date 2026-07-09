@@ -24,3 +24,9 @@ all:
           ansible_host: 127.0.0.1
           ansible_port: 2226
           ansible_user: centos
+    sudo-password:
+      hosts:
+        sudopw-prod-01:
+          ansible_host: 127.0.0.1
+          ansible_port: 2227
+          ansible_user: ubuntu

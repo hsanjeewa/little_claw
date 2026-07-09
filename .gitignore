@@ -1,3 +1,5 @@
 .env
 small_claw
+/agent
 agent.db
+vault.enc

@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"crypto/sha256"
 	"fmt"
 	"log"
 	"os"
@@ -23,13 +24,28 @@ import (
 	"github.com/devops/agent/internal/ui/tui"
 )
 
-func main() {
-	loadEnv()
+// defaultMasterSecret is the dev fallback vault master key. In production,
+// override it by setting LITTLE_CLAW_MASTER_KEY to a secret from your secret
+// manager. The key is SHA-256 derived so any length is accepted.
+const defaultMasterSecret = "a-very-secret-key-32-bytes-long!"
 
-	apiKey := os.Getenv("OPENAI_API_KEY")
-	if apiKey == "" {
-		log.Fatalf("OPENAI_API_KEY is not set. Please configure it in .env or environment.")
+// masterKeyEnv is the environment variable holding the vault master key.
+const masterKeyEnv = "LITTLE_CLAW_MASTER_KEY"
+
+func main() {
+	// Headless one-shot command to populate the encrypted vault (vault.enc)
+	// from the environment (OPENAI_API_KEY, SUDO_PASS_*) without launching the
+	// TUI. Usage: LITTLE_CLAW_MASTER_KEY=... ./small_claw init-vault
+	if len(os.Args) > 1 && os.Args[1] == "init-vault" {
+		loadEnv()
+		if err := initVault(resolveMasterKey()); err != nil {
+			log.Fatalf("vault init failed: %v", err)
+		}
+		fmt.Printf("vault initialized at %s\n", security.VaultPath())
+		return
 	}
+
+	loadEnv()
 
 	cfg, err := config.LoadConfig("config/config.toml")
 	if err != nil {
@@ -49,6 +65,30 @@ func main() {
 	llmTimeout := time.Duration(cfg.LLM.TimeoutSeconds) * time.Second
 	watchtowerRefreshInterval := time.Duration(cfg.Agent.WatchtowerRefreshIntervalSeconds) * time.Second
 
+	masterKey := resolveMasterKey()
+	vault := security.NewLocalEncryptedVault(masterKey)
+
+	// Load any previously persisted (encrypted) secrets so they survive
+	// restarts, then seed from the environment so a first run with
+	// OPENAI_API_KEY / SUDO_PASS_* in .env persists them encrypted to vault.enc.
+	if err := vault.Load(security.VaultPath()); err != nil {
+		log.Fatalf("Failed to load vault: %v", err)
+	}
+
+	// Seed the LLM API key and per-host sudo passwords from the environment
+	// into the encrypted vault (Ansible-style: encrypted at rest, resolved from
+	// the vault rather than read directly from .env).
+	security.ApplyAPIKeyEnv(vault, os.Environ())
+	security.ApplySudoPasswordEnv(vault, os.Environ())
+
+	// Resolve the LLM API key from the encrypted vault (never from plaintext
+	// .env directly). It must have been seeded from OPENAI_API_KEY on a prior
+	// run and persisted to vault.enc.
+	apiKey, err := vault.GetAPIKey()
+	if err != nil {
+		log.Fatalf("OPENAI_API_KEY is not configured. Set OPENAI_API_KEY in .env (or the environment) for one run so it is stored encrypted in %s, then remove it from .env.", security.VaultPath())
+	}
+
 	analyzer := llm.NewLocalOpenAIClient(cfg.LLM.BaseURL, apiKey, cfg.LLM.Model)
 
 	autopilotLLMClient := tui.NewLLMClient(tui.LLMConfig{
@@ -56,14 +96,6 @@ func main() {
 		APIKey:  apiKey,
 		Model:   cfg.LLM.Model,
 	})
-
-	masterSecret := []byte("a-very-secret-key-32-bytes-long!")
-	vault := security.NewLocalEncryptedVault(masterSecret)
-
-	// Seed per-host sudo passwords from the environment into the encrypted
-	// vault (Ansible-style: ansible_become_password per host, encrypted at rest).
-	// e.g. SUDO_PASS_WEB_PROD_01=...  ->  host alias "web-prod-01"
-	security.ApplySudoPasswordEnv(vault, os.Environ())
 
 	// Make plan generation context-aware about privilege escalation: a host with
 	// a configured sudo password escalates via sudo (password auto-supplied);
@@ -82,6 +114,11 @@ func main() {
 		_ = vault.EncryptAndStore("db-master", string(privateKeyData))
 	} else {
 		log.Printf("Warning: test_keys/id_ed25519 not found. SSH execution will fail.")
+	}
+
+	// Persist the encrypted vault (API key + SSH/sudo secrets) to disk.
+	if err := vault.Save(security.VaultPath()); err != nil {
+		log.Fatalf("Failed to persist vault: %v", err)
 	}
 
 	sshClient := ssh.NewSSHClient(vault)
@@ -180,4 +217,42 @@ func loadEnv() {
 		}
 		dir = parent
 	}
+}
+
+// resolveMasterKey returns the vault master key, preferring LITTLE_CLAW_MASTER_KEY
+// from the environment and falling back to the dev default. The value is
+// SHA-256 derived so any length is accepted and the key is always 32 bytes.
+func resolveMasterKey() []byte {
+	secret := os.Getenv(masterKeyEnv)
+	if secret == "" {
+		secret = defaultMasterSecret
+	}
+	sum := sha256.Sum256([]byte(secret))
+	return sum[:]
+}
+
+// initVault seeds the encrypted vault from the environment and persists it to
+// vault.enc. OPENAI_API_KEY and SUDO_PASS_* are read from the process
+// environment (loaded from .env by loadEnv), and dev SSH keys are added when
+// present. It does not launch the TUI.
+func initVault(masterKey []byte) error {
+	vault := security.NewLocalEncryptedVault(masterKey)
+
+	// Merge with any existing vault so prior secrets are preserved.
+	if err := vault.Load(security.VaultPath()); err != nil {
+		return fmt.Errorf("load existing vault: %w", err)
+	}
+
+	security.ApplyAPIKeyEnv(vault, os.Environ())
+	security.ApplySudoPasswordEnv(vault, os.Environ())
+
+	if data, err := os.ReadFile("test_keys/id_ed25519"); err == nil {
+		_ = vault.EncryptAndStore("web-prod-01", string(data))
+		_ = vault.EncryptAndStore("db-master", string(data))
+	}
+
+	if err := vault.Save(security.VaultPath()); err != nil {
+		return fmt.Errorf("save vault: %w", err)
+	}
+	return nil
 }

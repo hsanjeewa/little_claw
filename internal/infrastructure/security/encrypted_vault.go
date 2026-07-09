@@ -5,9 +5,11 @@ import (
 	"crypto/cipher"
 	"crypto/rand"
 	"encoding/base64"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
+	"os"
 	"strings"
 
 	"github.com/devops/agent/internal/domain/agent"
@@ -16,6 +18,17 @@ import (
 // ErrSudoPasswordMissing indicates no per-host sudo password is configured in
 // the vault. Callers should fall back to passwordless sudo (sudo -n).
 var ErrSudoPasswordMissing = errors.New("sudo password missing for target alias")
+
+// ErrAPIKeyMissing indicates no LLM API key is configured in the vault.
+var ErrAPIKeyMissing = errors.New("openai api key missing from vault")
+
+// apiKeyAlias namespaces the LLM API key under a reserved key so it never
+// collides with per-host secrets stored under host aliases.
+const apiKeyAlias = "llm:openai"
+
+// vaultFileName is the on-disk encrypted vault (mirrors ansible-vault's single
+// encrypted blob; here it holds the already-encrypted KeyStore map).
+const vaultFileName = "vault.enc"
 
 // sudoKeySuffix namespaces the sudo password under the host alias so it never
 // collides with the host's private key (mirrors Ansible keeping
@@ -100,6 +113,88 @@ func (v *LocalEncryptedVault) GetSudoPassword(hostAlias string) (string, error) 
 		return "", fmt.Errorf("context: %w", ErrSudoPasswordMissing)
 	}
 	return plaintext, nil
+}
+
+// StoreAPIKey encrypts the LLM API key at rest in the vault.
+func (v *LocalEncryptedVault) StoreAPIKey(apiKey string) error {
+	return v.EncryptAndStore(apiKeyAlias, apiKey)
+}
+
+// GetAPIKey returns the decrypted LLM API key, or ErrAPIKeyMissing if none is
+// configured.
+func (v *LocalEncryptedVault) GetAPIKey() (string, error) {
+	plaintext, err := v.GetPrivateKey(apiKeyAlias)
+	if err != nil {
+		return "", fmt.Errorf("context: %w", ErrAPIKeyMissing)
+	}
+	return plaintext, nil
+}
+
+// ApplyAPIKeyEnv seeds the LLM API key from the process environment
+// (OPENAI_API_KEY) into the encrypted vault, so the key is encrypted at rest
+// and resolved from the vault rather than read directly from the environment.
+func ApplyAPIKeyEnv(v *LocalEncryptedVault, environ []string) {
+	for _, kv := range environ {
+		idx := strings.IndexByte(kv, '=')
+		if idx < 0 {
+			continue
+		}
+		key, val := kv[:idx], kv[idx+1:]
+		if key != "OPENAI_API_KEY" {
+			continue
+		}
+		if val == "" {
+			return
+		}
+		_ = v.StoreAPIKey(val)
+		return
+	}
+}
+
+// Save writes the (already-encrypted) KeyStore to disk so secrets survive
+// process restarts. The master key is never written; only ciphertext is
+// persisted.
+func (v *LocalEncryptedVault) Save(path string) error {
+	data, err := json.Marshal(v.KeyStore)
+	if err != nil {
+		return fmt.Errorf("context: %w", err)
+	}
+	if err := os.WriteFile(path, data, 0600); err != nil {
+		return fmt.Errorf("context: %w", err)
+	}
+	return nil
+}
+
+// Load reads a previously saved encrypted KeyStore from disk. A missing file
+// is treated as a first-run bootstrap (no secrets yet) and returns no error.
+func (v *LocalEncryptedVault) Load(path string) error {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return nil
+		}
+		return fmt.Errorf("context: %w", err)
+	}
+	if len(data) == 0 {
+		return nil
+	}
+	var store map[string]string
+	if err := json.Unmarshal(data, &store); err != nil {
+		return fmt.Errorf("context: %w", err)
+	}
+	if v.KeyStore == nil {
+		v.KeyStore = make(map[string]string)
+	}
+	for k, val := range store {
+		v.KeyStore[k] = val
+	}
+	return nil
+}
+
+// VaultPath returns the conventional on-disk vault location relative to the
+// current working directory.
+func VaultPath() string {
+	return vaultFileName
 }
 
 // sudoPassEnvPrefix mirrors Ansible's per-host ansible_become_password, supplied
