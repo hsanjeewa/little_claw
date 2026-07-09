@@ -54,7 +54,7 @@ func (e *Engine) RunTask(ctx context.Context, task Task, hitlChan chan<- HitlReq
 	if isIdemp {
 		task.Status = StatusIdempotent
 		e.taskChan <- task
-		e.logAndNotify(ctx, task, msg, "Task skipped (Idempotent)")
+		e.logAndNotify(ctx, task, msg, "", "Task skipped (Idempotent)")
 		return
 	}
 
@@ -69,13 +69,13 @@ func (e *Engine) RunTask(ctx context.Context, task Task, hitlChan chan<- HitlReq
 		case <-ctx.Done():
 			task.Status = StatusFailed
 			e.taskChan <- task
-			e.logAndNotify(ctx, task, "Timeout/Cancel waiting for HITL", "Aborted")
+			e.logAndNotify(ctx, task, "Timeout/Cancel waiting for HITL", "Aborted", "Failed")
 			return
 		case approved := <-respChan:
 			if !approved {
 				task.Status = StatusSkipped
 				e.taskChan <- task
-				e.logAndNotify(ctx, task, "Operator Denied Authorization", "Skipped")
+				e.logAndNotify(ctx, task, "Operator Denied Authorization", "", "Skipped")
 				return
 			}
 		}
@@ -106,17 +106,32 @@ func (e *Engine) RunTask(ctx context.Context, task Task, hitlChan chan<- HitlReq
 		aiAnalysis = fmt.Sprintf("AI Analysis Failed (Network or Timeout): %v", aiErr)
 	}
 
+	var errorStr string
+	if err != nil {
+		errorStr = err.Error()
+	}
+	
 	finalOutput := fmt.Sprintf("RAW OUTPUT:\n%s\n\n[AI ANALYSIS]\n%s", output, aiAnalysis)
-	e.logAndNotify(ctx, task, finalOutput, "Completed")
+	summary := "Completed"
+	if err != nil {
+		summary = "Failed"
+	}
+	e.logAndNotify(ctx, task, finalOutput, errorStr, summary)
 }
 
-func (e *Engine) logAndNotify(ctx context.Context, task Task, output string, summary string) {
+func (e *Engine) logAndNotify(ctx context.Context, task Task, output string, errorStr string, summary string) {
 	execLog := ExecutionLog{
+		ID:        task.ID,
 		Timestamp: time.Now(),
 		Host:      task.HostAlias,
 		Command:   task.Command,
 		Status:    task.Status,
 		Output:    output,
+		Error:     errorStr,
+	}
+	
+	if execLog.ID == "" {
+		execLog.ID = "unknown"
 	}
 	
 	if err := e.repo.SaveLog(ctx, execLog); err != nil {

@@ -209,9 +209,13 @@ func (m AutopilotModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		return m, nil
 	case TaskFailedMsg:
+		errorDetails := msg.Error
+		if len(errorDetails) > 200 {
+			errorDetails = errorDetails[:200] + "..."
+		}
 		m.transcript = append(m.transcript, TranscriptEntry{
 			Kind: TranscriptSystem,
-			Text: fmt.Sprintf("Step failed: %s", msg.Error),
+			Text: fmt.Sprintf("Step failed: %s", errorDetails),
 		}.String())
 		m.run.OriginalError = msg.Error
 		return m.triggerRecovery(msg.Error)

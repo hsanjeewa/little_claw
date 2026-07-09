@@ -64,6 +64,7 @@ type ExecutionLog struct {
 	Command   string
 	Status    TaskStatus
 	Output    string
+	Error     string
 }
 
 type SecretVault interface {
@@ -92,4 +93,5 @@ type HitlRequest struct {
 type AuditRepository interface {
 	SaveLog(ctx context.Context, log ExecutionLog) error
 	GetLogs(ctx context.Context, host string) ([]ExecutionLog, error)
+	GetFailedLogs(ctx context.Context) ([]ExecutionLog, error)
 }
