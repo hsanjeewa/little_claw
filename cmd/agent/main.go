@@ -40,6 +40,9 @@ func main() {
 	}
 
 	apiKey := os.Getenv("OPENAI_API_KEY")
+	if apiKey == "" {
+		log.Fatalf("OPENAI_API_KEY is not set. Please configure it in .env or environment.")
+	}
 
 	sshTimeout := time.Duration(cfg.Agent.SSHTimeoutSeconds) * time.Second
 	llmTimeout := time.Duration(cfg.LLM.TimeoutSeconds) * time.Second

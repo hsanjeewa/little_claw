@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"net/http"
 	"regexp"
 	"strings"
 
@@ -25,10 +26,33 @@ func NewLocalOpenAIClient(baseURL, apiKey, model string) *LocalOpenAIClient {
 		config.BaseURL = baseURL
 	}
 
+	// Add OpenRouter required headers for proper ranking and identification
+	config.HTTPClient = &http.Client{
+		Transport: &headerTransport{
+			base: http.DefaultTransport,
+			headers: map[string]string{
+				"HTTP-Referer": "https://github.com/hsanjeewa/little_claw",
+				"X-Title":      "little_claw",
+			},
+		},
+	}
+
 	return &LocalOpenAIClient{
 		client: openai.NewClientWithConfig(config),
 		model:  model,
 	}
+}
+
+type headerTransport struct {
+	base    http.RoundTripper
+	headers map[string]string
+}
+
+func (t *headerTransport) RoundTrip(req *http.Request) (*http.Response, error) {
+	for key, value := range t.headers {
+		req.Header.Set(key, value)
+	}
+	return t.base.RoundTrip(req)
 }
 
 func (c *LocalOpenAIClient) AnalyzeOutput(ctx context.Context, command string, output string) (string, error) {

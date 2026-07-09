@@ -36,7 +36,28 @@ func NewSQLiteRepository(dbPath string) (*SQLiteRepository, error) {
 		return nil, fmt.Errorf("context: %w", fmt.Errorf("failed to create schema: %v", err))
 	}
 
+	if err := migrateSchema(db); err != nil {
+		return nil, fmt.Errorf("context: %w", fmt.Errorf("failed to migrate schema: %v", err))
+	}
+
 	return &SQLiteRepository{db: db}, nil
+}
+
+func migrateSchema(db *sql.DB) error {
+	rows, err := db.Query(`SELECT name FROM pragma_table_info('system_audit_logs') WHERE name = 'error'`)
+	if err != nil {
+		return fmt.Errorf("failed to check for error column: %w", err)
+	}
+	defer rows.Close()
+
+	if !rows.Next() {
+		_, err := db.Exec(`ALTER TABLE system_audit_logs ADD COLUMN error TEXT`)
+		if err != nil {
+			return fmt.Errorf("failed to add error column: %w", err)
+		}
+	}
+
+	return nil
 }
 
 func (r *SQLiteRepository) SaveLog(ctx context.Context, log agent.ExecutionLog) error {
