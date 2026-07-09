@@ -8,9 +8,19 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"strings"
 
 	"github.com/devops/agent/internal/domain/agent"
 )
+
+// ErrSudoPasswordMissing indicates no per-host sudo password is configured in
+// the vault. Callers should fall back to passwordless sudo (sudo -n).
+var ErrSudoPasswordMissing = errors.New("sudo password missing for target alias")
+
+// sudoKeySuffix namespaces the sudo password under the host alias so it never
+// collides with the host's private key (mirrors Ansible keeping
+// ansible_ssh_private_key_file and ansible_become_password distinct).
+const sudoKeySuffix = ":sudo"
 
 type LocalEncryptedVault struct {
 	MasterKey []byte
@@ -80,8 +90,45 @@ func (v *LocalEncryptedVault) GetPrivateKey(hostAlias string) (string, error) {
 	return string(plaintext), nil
 }
 
+func (v *LocalEncryptedVault) EncryptAndStoreSudoPassword(hostAlias, password string) error {
+	return v.EncryptAndStore(hostAlias+sudoKeySuffix, password)
+}
+
 func (v *LocalEncryptedVault) GetSudoPassword(hostAlias string) (string, error) {
-	return "mocked-secure-sudo-password", nil
+	plaintext, err := v.GetPrivateKey(hostAlias + sudoKeySuffix)
+	if err != nil {
+		return "", fmt.Errorf("context: %w", ErrSudoPasswordMissing)
+	}
+	return plaintext, nil
+}
+
+// sudoPassEnvPrefix mirrors Ansible's per-host ansible_become_password, supplied
+// via environment (e.g. SUDO_PASS_WEB_PROD_01) and stored encrypted in the vault.
+const sudoPassEnvPrefix = "SUDO_PASS_"
+
+// ApplySudoPasswordEnv seeds per-host sudo passwords from the process
+// environment into the encrypted vault, so secrets are encrypted at rest and
+// resolved per host (never a single shared password). The env key is the prefix
+// plus the upper-cased host alias; the alias is recovered by lower-casing.
+func ApplySudoPasswordEnv(v *LocalEncryptedVault, environ []string) {
+	for _, kv := range environ {
+		idx := strings.IndexByte(kv, '=')
+		if idx < 0 {
+			continue
+		}
+		key, val := kv[:idx], kv[idx+1:]
+		if !strings.HasPrefix(key, sudoPassEnvPrefix) {
+			continue
+		}
+		alias := strings.ToLower(strings.TrimPrefix(key, sudoPassEnvPrefix))
+		// Env vars can't contain dashes, so callers use underscores; map them
+		// back to dashes to match inventory host aliases (web_prod_01 -> web-prod-01).
+		alias = strings.ReplaceAll(alias, "_", "-")
+		if alias == "" || val == "" {
+			continue
+		}
+		_ = v.EncryptAndStoreSudoPassword(alias, val)
+	}
 }
 
 var _ agent.SecretVault = (*LocalEncryptedVault)(nil)

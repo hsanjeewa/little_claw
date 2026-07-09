@@ -12,3 +12,15 @@ all:
           ansible_host: 127.0.0.1
           ansible_port: 2223
           ansible_user: postgres
+    ubuntu:
+      hosts:
+        ubuntu-prod-01:
+          ansible_host: 127.0.0.1
+          ansible_port: 2225
+          ansible_user: ubuntu
+    centos:
+      hosts:
+        centos-prod-01:
+          ansible_host: 127.0.0.1
+          ansible_port: 2226
+          ansible_user: centos

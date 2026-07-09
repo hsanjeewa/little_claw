@@ -33,6 +33,9 @@ type GeneratingPlan struct{}
 type LLMClient struct {
 	client *llm.LocalOpenAIClient
 	config LLMConfig
+	// sudoPolicy reports per-host escalation mode so plan generation is
+	// context-aware. Defaults to DefaultSudoPolicy when nil.
+	sudoPolicy SudoPolicy
 }
 
 type LLMConfig struct {
@@ -47,12 +50,59 @@ type HostEnvironment struct {
 	Version        string
 }
 
+// SudoMode describes how privilege escalation is handled for a host, so the
+// plan generator can tell the LLM whether to include "sudo" or not.
+type SudoMode int
+
+const (
+	// SudoNone means commands already run as root; no sudo is needed or wanted.
+	SudoNone SudoMode = iota
+	// SudoPasswordless means the user has NOPASSWD sudo; prefix with "sudo".
+	SudoPasswordless
+	// SudoPassword means a per-host sudo password is configured; prefix with
+	// "sudo" and the executor supplies the password automatically.
+	SudoPassword
+)
+
+// SudoPolicy reports the escalation mode for a host alias. It is supplied by
+// the caller (e.g. wired from the secret vault) so planning stays context-aware
+// without the TUI importing infrastructure secrets directly.
+type SudoPolicy func(alias string) SudoMode
+
+// DefaultSudoPolicy treats every host as needing sudo (conservative default
+// when no policy is wired in).
+func DefaultSudoPolicy(alias string) SudoMode { return SudoPasswordless }
+
+// privilegeInstruction returns a context-aware, per-host instruction telling the
+// LLM whether to prefix commands with "sudo". Root hosts must not use sudo;
+// non-root hosts escalate via sudo (passwordless or with an auto-supplied
+// password).
+func privilegeInstruction(user string, mode SudoMode) string {
+	if user == "root" || mode == SudoNone {
+		return "runs as root; do NOT use sudo"
+	}
+	if mode == SudoPassword {
+		return "sudo required; prefix commands with sudo (password is supplied automatically)"
+	}
+	return "sudo available (passwordless); prefix commands with sudo"
+}
+
 func NewLLMClient(config LLMConfig) *LLMClient {
 	client := llm.NewLocalOpenAIClient(config.BaseURL, config.APIKey, config.Model)
 	return &LLMClient{
-		client: client,
-		config: config,
+		client:     client,
+		config:     config,
+		sudoPolicy: DefaultSudoPolicy,
 	}
+}
+
+// WithSudoPolicy sets the per-host sudo escalation policy used when building
+// the plan-generation context. Returns the client for chaining.
+func (c *LLMClient) WithSudoPolicy(policy SudoPolicy) *LLMClient {
+	if policy != nil {
+		c.sudoPolicy = policy
+	}
+	return c
 }
 
 func (m AutopilotModel) GeneratePlan(goal string) tea.Cmd {
@@ -150,11 +200,8 @@ func (llmClient *LLMClient) getCapabilities(selectedHosts []inventory.TargetHost
 
 	for _, host := range selectedHosts {
 		var hostCaps []string
-		if host.User != "root" {
-			hostCaps = append(hostCaps, "sudo")
-		} else {
-			hostCaps = append(hostCaps, "root")
-		}
+		mode := llmClient.sudoPolicy(host.Alias)
+		hostCaps = append(hostCaps, privilegeInstruction(host.User, mode))
 		if env, ok := environments[host.Alias]; ok && env.PackageManager != "" && env.PackageManager != "unknown" {
 			hostCaps = append(hostCaps, env.PackageManager+" package manager")
 		}
@@ -165,7 +212,9 @@ func (llmClient *LLMClient) getCapabilities(selectedHosts []inventory.TargetHost
 }
 
 func (llmClient *LLMClient) getConstraints() string {
-	return "Operations must be safe, non-destructive, and approved by operator before execution. Use read-only commands for diagnostics first. Document all mutative operations. Match commands to the target OS and package manager."
+	return "Operations must be safe, non-destructive, and approved by operator before execution. Use read-only commands for diagnostics first. Document all mutative operations. Match commands to the target OS and package manager. " +
+		"Privilege escalation is handled by the agent: when a host's capability says 'runs as root; do NOT use sudo', emit commands WITHOUT 'sudo'; " +
+		"when it says sudo is available/required, prefix commands with 'sudo'. Never guess — follow the per-host capability exactly."
 }
 
 func (m AutopilotModel) handlePlanGeneration(goal string) tea.Cmd {

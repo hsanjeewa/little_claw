@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"path/filepath"
 	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
@@ -23,7 +24,12 @@ import (
 )
 
 func main() {
-	_ = godotenv.Overload()
+	loadEnv()
+
+	apiKey := os.Getenv("OPENAI_API_KEY")
+	if apiKey == "" {
+		log.Fatalf("OPENAI_API_KEY is not set. Please configure it in .env or environment.")
+	}
 
 	cfg, err := config.LoadConfig("config/config.toml")
 	if err != nil {
@@ -37,11 +43,6 @@ func main() {
 	repo, err := database.NewSQLiteRepository(cfg.Agent.DatabasePath)
 	if err != nil {
 		log.Fatalf("Failed to initialize database: %v", err)
-	}
-
-	apiKey := os.Getenv("OPENAI_API_KEY")
-	if apiKey == "" {
-		log.Fatalf("OPENAI_API_KEY is not set. Please configure it in .env or environment.")
 	}
 
 	sshTimeout := time.Duration(cfg.Agent.SSHTimeoutSeconds) * time.Second
@@ -58,6 +59,22 @@ func main() {
 
 	masterSecret := []byte("a-very-secret-key-32-bytes-long!")
 	vault := security.NewLocalEncryptedVault(masterSecret)
+
+	// Seed per-host sudo passwords from the environment into the encrypted
+	// vault (Ansible-style: ansible_become_password per host, encrypted at rest).
+	// e.g. SUDO_PASS_WEB_PROD_01=...  ->  host alias "web-prod-01"
+	security.ApplySudoPasswordEnv(vault, os.Environ())
+
+	// Make plan generation context-aware about privilege escalation: a host with
+	// a configured sudo password escalates via sudo (password auto-supplied);
+	// otherwise it relies on passwordless sudo. The LLM is told per host whether
+	// to include "sudo" or not.
+	autopilotLLMClient = autopilotLLMClient.WithSudoPolicy(func(alias string) tui.SudoMode {
+		if _, err := vault.GetSudoPassword(alias); err == nil {
+			return tui.SudoPassword
+		}
+		return tui.SudoPasswordless
+	})
 
 	privateKeyData, err := os.ReadFile("test_keys/id_ed25519")
 	if err == nil {
@@ -133,5 +150,34 @@ func main() {
 	if _, err := p.Run(); err != nil {
 		fmt.Printf("Error running program: %v\n", err)
 		os.Exit(1)
+	}
+}
+
+// loadEnv loads .env, searching upward from the working directory so the file
+// is found regardless of where the binary is launched from. godotenv.Overload
+// ensures values in .env take precedence over any OPENAI_API_KEY (or other
+// secret) already present in the process environment, which would otherwise
+// shadow the correct key and cause authentication failures against OpenRouter.
+func loadEnv() {
+	_ = godotenv.Overload()
+
+	dir, err := os.Getwd()
+	if err != nil {
+		return
+	}
+
+	for {
+		path := filepath.Join(dir, ".env")
+		if _, err := os.Stat(path); err == nil {
+			if err := godotenv.Overload(path); err == nil {
+				return
+			}
+		}
+
+		parent := filepath.Dir(dir)
+		if parent == dir {
+			return
+		}
+		dir = parent
 	}
 }

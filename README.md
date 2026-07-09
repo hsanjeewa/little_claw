@@ -53,6 +53,48 @@ This creates `test_keys/id_ed25519` (private key, used by the agent) and `test_k
 
 > **Note**: The master secret in `cmd/agent/main.go` must be exactly **32 bytes** for AES-256 encryption of SSH keys in the vault. If it's any other length, `EncryptAndStore` silently fails and the SSH client cannot authenticate.
 
+### Step 2b: Privilege escalation (sudo)
+
+When a plan step needs root (e.g. `sudo apt-get update`), the agent escalates
+privileges the same way **Ansible** does with `become`:
+
+- **Passwordless first.** If no per-host sudo password is configured, the agent
+  runs `sudo -n <command>` (non-interactive). If the target host grants the SSH
+  user NOPASSWD sudo, the command just works. If sudo still needs a password,
+  `-n` makes it **fail fast** instead of hanging on a prompt.
+- **Per-host password (Ansible Vault style).** When a host requires a sudo
+  password, set it per host via environment variable. At startup the agent
+  encrypts it at rest in the local AES-256 vault (never stored in plaintext):
+
+  ```bash
+  # Key format: SUDO_PASS_<HOST_ALIAS with dashes as underscores>
+  SUDO_PASS_WEB_PROD_01=your-sudo-password
+  SUDO_PASS_DB_MASTER=your-sudo-password
+  ```
+
+  The alias is the `hosts.yaml` alias lower-cased with underscores mapped back
+  to dashes (`WEB_PROD_01` → `web-prod-01`). The agent looks the password up by
+  host alias and feeds it only when the remote `sudo` prompt appears.
+
+- **No shared password.** Each host has its own secret. There is no global
+  fallback password.
+
+- **Context-aware planning.** The plan generator is told the per-host privilege
+  model so it only emits `sudo` when actually required:
+  - Hosts whose SSH user is **root** (or that need no escalation) get commands
+    **without** `sudo`.
+  - Non-root hosts with a configured password get commands **with** `sudo`
+    (the agent supplies the password automatically).
+  - Non-root hosts with passwordless sudo get commands **with** `sudo`
+    (run non-interactively as `sudo -n`).
+
+  The per-host decision is driven by the same `SUDO_PASS_*` configuration the
+  executor uses, so planning and execution never disagree about escalation.
+
+If a privileged command still fails, the execution error now includes the
+failing command and the captured output/stderr so you can see the exact cause
+(e.g. an `apt` 404 or a sudo permission error) rather than a bare exit status.
+
 ### Step 3: Start the Test Servers (Optional)
 
 To test the agent safely on your computer without touching real servers, we have provided a simulated server environment:

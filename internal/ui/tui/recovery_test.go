@@ -1,7 +1,10 @@
 package tui
 
 import (
+	"strings"
 	"testing"
+
+	tea "github.com/charmbracelet/bubbletea"
 
 	"github.com/devops/agent/internal/infrastructure/llm"
 )
@@ -267,6 +270,42 @@ func TestRecovery_RejectionFailsRun(t *testing.T) {
 
 	if m.run.State != RunStateFailed {
 		t.Fatalf("expected Failed state after recovery rejection, got %s", m.run.State)
+	}
+}
+
+func TestRecovery_RejectionReopensErrorModal(t *testing.T) {
+	m := NewAutopilotModel()
+	m.width = 100
+	m.height = 30
+
+	plan := []llm.PlanStep{{Description: "Check nginx", Command: "systemctl status nginx", IsMutative: false}}
+	u, _ := m.Update(PlanGeneratedMsg{Plan: plan})
+	m = u.(AutopilotModel)
+	u, _ = m.Update(PlanApprovedMsg{})
+	m = u.(AutopilotModel)
+
+	fullError := "ssh: connect to host 10.0.0.5 port 22: connection refused; the key is not authorized in ~/.ssh/authorized_keys"
+	u, _ = m.Update(TaskFailedMsg{StepIndex: 0, Error: fullError})
+	m = u.(AutopilotModel)
+
+	// Operator dismisses the modal.
+	u, _ = m.Update(tea.KeyMsg{Type: tea.KeyEsc})
+	m = u.(AutopilotModel)
+	if m.errorModal != "" {
+		t.Fatal("expected modal dismissed before rejection")
+	}
+
+	// Recovery plan generated and then rejected -> final failure must reopen modal.
+	u, _ = m.Update(RecoveryPlanGeneratedMsg{Plan: []llm.PlanStep{{Description: "ping", Command: "ping 8.8.8.8"}}})
+	m = u.(AutopilotModel)
+	u, _ = m.Update(RecoveryRejectedMsg{})
+	m = u.(AutopilotModel)
+
+	if m.errorModal == "" {
+		t.Fatal("expected error modal reopened on recovery rejection")
+	}
+	if !strings.Contains(m.View(), "not authorized in") || !strings.Contains(m.View(), ".ssh/authorized_keys") {
+		t.Fatalf("error modal should show full error, got:\n%s", m.View())
 	}
 }
 

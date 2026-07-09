@@ -28,6 +28,7 @@ const (
 func (m AutopilotModel) triggerRecovery(errorMsg string) (AutopilotModel, tea.Cmd) {
 	if m.run.RetryCount >= m.run.MaxRetries {
 		m.run.State = RunStateFailed
+		m.errorModal = errorMsg
 		m.transcript = append(m.transcript, TranscriptEntry{
 			Kind: TranscriptSystem,
 			Text: fmt.Sprintf("❌ Recovery failed after %d attempts. Max retries reached.", m.run.RetryCount),

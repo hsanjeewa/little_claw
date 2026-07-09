@@ -48,6 +48,7 @@ type AutopilotModel struct {
 	taskHostPort  int
 	selectedHosts []inventory.TargetHost
 	watchtowerState WatchtowerStateSnapshot
+	errorModal     string
 }
 
 func NewAutopilotModel() AutopilotModel {
@@ -209,15 +210,12 @@ func (m AutopilotModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		return m, nil
 	case TaskFailedMsg:
-		errorDetails := msg.Error
-		if len(errorDetails) > 200 {
-			errorDetails = errorDetails[:200] + "..."
-		}
 		m.transcript = append(m.transcript, TranscriptEntry{
 			Kind: TranscriptSystem,
-			Text: fmt.Sprintf("Step failed: %s", errorDetails),
+			Text: fmt.Sprintf("Step failed: %s", msg.Error),
 		}.String())
 		m.run.OriginalError = msg.Error
+		m.errorModal = msg.Error
 		return m.triggerRecovery(msg.Error)
 	case ExecutionProgressMsg:
 		m.run.CurrentHost = msg.Progress.CurrentHost
@@ -256,6 +254,7 @@ func (m AutopilotModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, nil
 	case RecoveryRejectedMsg:
 		m.run.State = RunStateFailed
+		m.errorModal = m.run.OriginalError
 		m.transcript = append(m.transcript, TranscriptEntry{
 			Kind: TranscriptSystem,
 			Text: "❌ Recovery rejected by operator",
@@ -266,6 +265,19 @@ func (m AutopilotModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.height = msg.Height
 		m.commandInput.Width = m.commandWidth()
 	case tea.KeyMsg:
+		if m.errorModal != "" {
+			switch msg.Type {
+			case tea.KeyEsc, tea.KeyCtrlC:
+				m.errorModal = ""
+				return m, nil
+			case tea.KeyRunes:
+				if string(msg.Runes) == "q" {
+					m.errorModal = ""
+					return m, nil
+				}
+			}
+			return m, nil
+		}
 		switch msg.Type {
 		case tea.KeyTab:
 			m.cycleFocus()
@@ -356,7 +368,35 @@ func (m AutopilotModel) View() string {
 	if handoff != "" {
 		sections = append([]string{handoff}, sections...)
 	}
-	return constrainSurfaceContent(lipgloss.JoinVertical(lipgloss.Left, sections...), width, height-1)
+	base := constrainSurfaceContent(lipgloss.JoinVertical(lipgloss.Left, sections...), width, height-1)
+
+	if m.errorModal != "" {
+		return m.renderErrorModal(base, width, height)
+	}
+	return base
+}
+
+func (m AutopilotModel) renderErrorModal(base string, width, height int) string {
+	border := lipgloss.NewStyle().
+		Border(lipgloss.RoundedBorder()).
+		BorderForeground(lipgloss.Color("#FF5555")).
+		Foreground(lipgloss.Color("#FF5555")).
+		Padding(0, 1)
+
+	title := lipgloss.NewStyle().Bold(true).Render("⚠️  STEP EXECUTION FAILED")
+	body := lipgloss.NewStyle().Foreground(lipgloss.Color("#FFD7D7")).Render(m.errorModal)
+
+	modalWidth := min(width-4, max(lipgloss.Width(title), lipgloss.Width(body))+6)
+	if modalWidth < 20 {
+		modalWidth = 20
+	}
+	hint := lipgloss.NewStyle().Faint(true).Render("press esc / q to dismiss")
+
+	content := lipgloss.JoinVertical(lipgloss.Left, title, "", body, "", hint)
+	modal := border.Width(modalWidth).Render(content)
+
+	overlay := lipgloss.Place(width, height, lipgloss.Center, lipgloss.Center, modal)
+	return overlay
 }
 
 func (m *AutopilotModel) cycleFocus() {

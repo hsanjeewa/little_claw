@@ -2,7 +2,10 @@ package tui
 
 import (
 	"context"
+	"strings"
 	"testing"
+
+	tea "github.com/charmbracelet/bubbletea"
 
 	"github.com/devops/agent/internal/domain/agent"
 	"github.com/devops/agent/internal/infrastructure/llm"
@@ -43,6 +46,88 @@ func TestExecution_HostFirstSequentialOrder(t *testing.T) {
 		if actualOrder[i] != expected {
 			t.Fatalf("step %d: expected %s, got %s", i, expected, actualOrder[i])
 		}
+	}
+}
+
+func TestExecution_FailureShowsFullErrorInTranscript(t *testing.T) {
+	m := NewAutopilotModel()
+
+	plan := []llm.PlanStep{
+		{Description: "Check nginx", Command: "systemctl status nginx", IsMutative: false},
+	}
+	planMsg := PlanGeneratedMsg{Plan: plan}
+	updated, _ := m.Update(planMsg)
+	m = updated.(AutopilotModel)
+
+	updated, _ = m.Update(PlanApprovedMsg{})
+	m = updated.(AutopilotModel)
+
+	longError := "ssh: connect to host 10.0.0.5 port 22: connection refused (auth attempted with key /root/.ssh/id_ed25519); " +
+		"the remote host closed the connection after 3 retries; last exit status 255; " +
+		"this usually means the SSH service is not running, the host is unreachable, or the key is not authorized in ~/.ssh/authorized_keys"
+	if len(longError) <= 200 {
+		t.Fatal("test error must exceed the old 200-char truncation threshold")
+	}
+
+	failureMsg := TaskFailedMsg{StepIndex: 0, Error: longError}
+	updated, _ = m.Update(failureMsg)
+	m = updated.(AutopilotModel)
+
+	transcript := strings.Join(m.transcript, "\n")
+	// The tail of the error carries the actionable diagnosis and must be present,
+	// proving the message was not truncated at the old 200-char limit.
+	if !strings.Contains(transcript, "not authorized in ~/.ssh/authorized_keys") {
+		t.Fatalf("transcript is missing the full error detail, got:\n%s", transcript)
+	}
+	if !strings.Contains(transcript, "Step failed: "+longError) {
+		t.Fatalf("transcript should contain the complete untruncated error, got:\n%s", transcript)
+	}
+	if m.run.OriginalError != longError {
+		t.Fatalf("OriginalError should preserve the full error, got:\n%s", m.run.OriginalError)
+	}
+}
+
+func TestExecution_FailureOpensErrorModalWithFullError(t *testing.T) {
+	m := NewAutopilotModel()
+	m.width = 100
+	m.height = 30
+
+	plan := []llm.PlanStep{{Description: "Check nginx", Command: "systemctl status nginx", IsMutative: false}}
+	u, _ := m.Update(PlanGeneratedMsg{Plan: plan})
+	m = u.(AutopilotModel)
+	u, _ = m.Update(PlanApprovedMsg{})
+	m = u.(AutopilotModel)
+
+	longError := "ssh: connect to host 10.0.0.5 port 22: connection refused (auth attempted with key /root/.ssh/id_ed25519); " +
+		"the remote host closed the connection after 3 retries; last exit status 255; " +
+		"this usually means the SSH service is not running, the host is unreachable, or the key is not authorized in ~/.ssh/authorized_keys"
+	if len(longError) <= 200 {
+		t.Fatal("test error must exceed the truncation threshold")
+	}
+
+	u, _ = m.Update(TaskFailedMsg{StepIndex: 0, Error: longError})
+	m = u.(AutopilotModel)
+
+	if m.errorModal == "" {
+		t.Fatal("expected error modal to be opened on step failure")
+	}
+
+	view := m.View()
+	// The full error must be visible in the modal, including the diagnostic tail.
+	// The modal wraps long lines, so check the error in parts.
+	if !strings.Contains(view, "not authorized in") || !strings.Contains(view, ".ssh/authorized_keys") {
+		t.Fatalf("error modal should show the full untruncated error, got:\n%s", view)
+	}
+
+	// Dismiss with escape.
+	u, _ = m.Update(tea.KeyMsg{Type: tea.KeyEsc})
+	m = u.(AutopilotModel)
+	if m.errorModal != "" {
+		t.Fatal("expected error modal to close after escape")
+	}
+	view = m.View()
+	if strings.Contains(view, "not authorized in ~/.ssh/authorized_keys") {
+		t.Fatal("error modal should no longer be visible after dismissal")
 	}
 }
 

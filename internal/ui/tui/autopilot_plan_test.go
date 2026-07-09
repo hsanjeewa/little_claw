@@ -7,8 +7,51 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 
+	"github.com/devops/agent/internal/infrastructure/inventory"
 	"github.com/devops/agent/internal/infrastructure/llm"
 )
+
+func TestPrivilegeInstruction_ContextAware(t *testing.T) {
+	cases := []struct {
+		name    string
+		user    string
+		mode    SudoMode
+		want    string
+		forbid  bool // true => must forbid "sudo"
+	}{
+		{
+			name:   "root user needs no sudo",
+			user:   "root",
+			mode:   SudoNone,
+			want:   "do NOT use sudo",
+			forbid: true,
+		},
+		{
+			name: "non-root passwordless sudo",
+			user: "deployer",
+			mode: SudoPasswordless,
+			want: "prefix commands with sudo",
+		},
+		{
+			name: "non-root sudo with password",
+			user: "deployer",
+			mode: SudoPassword,
+			want: "prefix commands with sudo",
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			got := privilegeInstruction(tc.user, tc.mode)
+			if !strings.Contains(got, tc.want) {
+				t.Fatalf("expected privilege instruction to contain %q, got %q", tc.want, got)
+			}
+			if tc.forbid && strings.Contains(strings.ToLower(got), "prefix commands with sudo") {
+				t.Fatalf("root host must NOT be told to prefix with sudo, got %q", got)
+			}
+		})
+	}
+}
 
 func TestAutopilot_GeneratePlan_CommandTriggersPlanGeneration(t *testing.T) {
 	m := NewAutopilotModel()
@@ -104,5 +147,47 @@ func TestAutopilot_InvalidJSONResponse_HandledGracefully(t *testing.T) {
 
 	if !strings.Contains(transcript, "ℹ️") {
 		t.Fatal("expected system emoji in transcript")
+	}
+}
+
+func TestGetCapabilities_ContextAwareSudo(t *testing.T) {
+	policy := func(alias string) SudoMode {
+		switch alias {
+		case "web-prod-01":
+			return SudoPasswordless // non-root, NOPASSWD sudo
+		case "db-master":
+			return SudoPassword // non-root, password configured
+		case "root-host":
+			return SudoNone // runs as root
+		}
+		return SudoPasswordless
+	}
+	client := (&LLMClient{}).WithSudoPolicy(policy)
+
+	hosts := []inventory.TargetHost{
+		{Alias: "web-prod-01", IP: "127.0.0.1", Port: 2222, User: "deployer"},
+		{Alias: "db-master", IP: "127.0.0.1", Port: 2223, User: "postgres"},
+		{Alias: "root-host", IP: "127.0.0.1", Port: 22, User: "root"},
+	}
+
+	caps := client.getCapabilities(hosts, WatchtowerStateSnapshot{}, map[string]HostEnvironment{})
+
+	// Non-root passwordless host: told to prefix with sudo.
+	if !strings.Contains(caps, "web-prod-01: sudo available (passwordless); prefix commands with sudo") {
+		t.Fatalf("expected web-prod-01 to require sudo, got:\n%s", caps)
+	}
+	// Non-root password host: told to prefix with sudo (auto-supplied).
+	if !strings.Contains(caps, "db-master: sudo required; prefix commands with sudo (password is supplied automatically)") {
+		t.Fatalf("expected db-master to require sudo with password, got:\n%s", caps)
+	}
+	// Root host: explicitly told NOT to use sudo.
+	if !strings.Contains(caps, "root-host: runs as root; do NOT use sudo") {
+		t.Fatalf("expected root-host to forbid sudo, got:\n%s", caps)
+	}
+
+	// Constraint must reinforce following the per-host capability.
+	constraints := client.getConstraints()
+	if !strings.Contains(constraints, "follow the per-host capability") {
+		t.Fatalf("expected constraint to reference per-host capability, got:\n%s", constraints)
 	}
 }
