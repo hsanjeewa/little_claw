@@ -7,6 +7,7 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 
 	"github.com/devops/agent/internal/domain/agent"
+	"github.com/devops/agent/internal/infrastructure/inventory"
 )
 
 func TestAutopilotModel_ViewRendersCommandBarAndPanes(t *testing.T) {
@@ -62,7 +63,7 @@ func TestAutopilotModel_HandoffCompactViewFitsBoundsAndShowsLabels(t *testing.T)
 		MetricFamily: agent.MetricFamilyMemory,
 		SelectedHost: "db-master",
 		Observation:  "Memory 85.0% used",
-	})
+	}, []inventory.TargetHost{}, WatchtowerStateSnapshot{})
 	updated, _ := m.Update(tea.WindowSizeMsg{Width: 80, Height: 15})
 	m = updated.(AutopilotModel)
 

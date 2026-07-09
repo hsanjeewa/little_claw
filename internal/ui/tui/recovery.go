@@ -72,13 +72,13 @@ func (m AutopilotModel) generateRecoveryPlan(errorMsg string) []llm.PlanStep {
 				IsMutative:  false,
 			},
 			{
-				Description: "Verify SSH service status",
-				Command:     "systemctl status sshd",
+				Description: "Verify SSH service is running",
+				Command:     "ps aux | grep -E '(sshd|ssh)' | grep -v grep",
 				IsMutative:  false,
 			},
 			{
-				Description: "Check firewall rules",
-				Command:     "iptables -L -n",
+				Description: "Check for listening ports",
+				Command:     "ss -tlnp | grep -E '(22|ssh)' || netstat -tlnp | grep -E '(22|ssh)'",
 				IsMutative:  false,
 			},
 		}
@@ -96,7 +96,7 @@ func (m AutopilotModel) generateRecoveryPlan(errorMsg string) []llm.PlanStep {
 			},
 			{
 				Description: "Check file permissions",
-				Command:     "ls -la /var/log/nginx",
+				Command:     "ls -la /var/log/nginx 2>/dev/null || ls -la /var/log 2>/dev/null",
 				IsMutative:  false,
 			},
 		}
@@ -104,12 +104,12 @@ func (m AutopilotModel) generateRecoveryPlan(errorMsg string) []llm.PlanStep {
 		recoverySteps = []llm.PlanStep{
 			{
 				Description: "Check system logs for errors",
-				Command:     "journalctl -xe --no-pager",
+				Command:     "dmesg | tail -20 || tail -20 /var/log/syslog 2>/dev/null || tail -20 /var/log/messages 2>/dev/null",
 				IsMutative:  false,
 			},
 			{
 				Description: "Verify service status",
-				Command:     "systemctl status --failed",
+				Command:     "ps aux | head -20",
 				IsMutative:  false,
 			},
 			{

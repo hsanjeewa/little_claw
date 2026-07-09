@@ -2870,3 +2870,38 @@ func renderFreshnessLabel(freshness watchtowerFreshnessState) string {
 		return "FRESH"
 	}
 }
+
+func (m WatchtowerModel) ExportStateSnapshot() WatchtowerStateSnapshot {
+	state := WatchtowerStateSnapshot{
+		MemorySnapshots:  make(map[string][]agent.MemorySnapshot),
+		CPUSnapshots:     make(map[string][]agent.CPUSnapshot),
+		StorageSnapshots: make(map[string][]agent.StorageSnapshot),
+		NetworkSnapshots: make(map[string][]agent.NetworkSnapshot),
+	}
+
+	for _, snapshot := range m.memorySnapshots {
+		if snapshot.Status == agent.SnapshotStatusSuccess {
+			state.MemorySnapshots[snapshot.HostAlias] = append(state.MemorySnapshots[snapshot.HostAlias], snapshot)
+		}
+	}
+
+	for _, snapshot := range m.cpuSnapshots {
+		if snapshot.Status == agent.SnapshotStatusSuccess {
+			state.CPUSnapshots[snapshot.HostAlias] = append(state.CPUSnapshots[snapshot.HostAlias], snapshot)
+		}
+	}
+
+	for _, snapshot := range m.storageSnapshots {
+		if snapshot.Status == agent.SnapshotStatusSuccess {
+			state.StorageSnapshots[snapshot.HostAlias] = append(state.StorageSnapshots[snapshot.HostAlias], snapshot)
+		}
+	}
+
+	for _, snapshot := range m.networkSnapshots {
+		if snapshot.Status == agent.SnapshotStatusSuccess {
+			state.NetworkSnapshots[snapshot.HostAlias] = append(state.NetworkSnapshots[snapshot.HostAlias], snapshot)
+		}
+	}
+
+	return state
+}

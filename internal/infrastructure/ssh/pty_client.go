@@ -26,12 +26,12 @@ func NewSSHClient(vault agent.SecretVault) *SSHClient {
 func (c *SSHClient) Execute(ctx context.Context, task agent.Task) (string, error) {
 	keyData, err := c.vault.GetPrivateKey(task.HostAlias)
 	if err != nil {
-		return "", fmt.Errorf("context: %w", fmt.Errorf("failed to get private key: %v", err))
+		return "", fmt.Errorf("context: failed to get private key: %w", err)
 	}
 
 	signer, err := ssh.ParsePrivateKey([]byte(keyData))
 	if err != nil {
-		return "", fmt.Errorf("context: %w", fmt.Errorf("failed to parse private key: %v", err))
+		return "", fmt.Errorf("context: failed to parse private key: %w", err)
 	}
 
 	config := &ssh.ClientConfig{
@@ -56,13 +56,13 @@ func (c *SSHClient) Execute(ctx context.Context, task agent.Task) (string, error
 
 	conn, err := ssh.Dial("tcp", addr, config)
 	if err != nil {
-		return "", fmt.Errorf("context: %w", fmt.Errorf("failed to dial: %v", err))
+		return "", fmt.Errorf("context: failed to dial: %w", err)
 	}
 	defer conn.Close()
 
 	session, err := conn.NewSession()
 	if err != nil {
-		return "", fmt.Errorf("context: %w", fmt.Errorf("failed to create session: %v", err))
+		return "", fmt.Errorf("context: failed to create session: %w", err)
 	}
 	defer session.Close()
 
@@ -73,27 +73,27 @@ func (c *SSHClient) Execute(ctx context.Context, task agent.Task) (string, error
 	}
 
 	if err := session.RequestPty("vt100", 80, 40, modes); err != nil {
-		return "", fmt.Errorf("context: %w", fmt.Errorf("request for pseudo terminal failed: %v", err))
+		return "", fmt.Errorf("context: request for pseudo terminal failed: %w", err)
 	}
 
 	stdin, err := session.StdinPipe()
 	if err != nil {
-		return "", fmt.Errorf("context: %w", fmt.Errorf("failed to get stdin pipe: %v", err))
+		return "", fmt.Errorf("context: failed to get stdin pipe: %w", err)
 	}
 	defer stdin.Close()
 
 	stdout, err := session.StdoutPipe()
 	if err != nil {
-		return "", fmt.Errorf("context: %w", fmt.Errorf("failed to get stdout pipe: %v", err))
+		return "", fmt.Errorf("context: failed to get stdout pipe: %w", err)
 	}
 
 	stderr, err := session.StderrPipe()
 	if err != nil {
-		return "", fmt.Errorf("context: %w", fmt.Errorf("failed to get stderr pipe: %v", err))
+		return "", fmt.Errorf("context: failed to get stderr pipe: %w", err)
 	}
 
 	if err := session.Start(task.Command); err != nil {
-		return "", fmt.Errorf("context: %w", fmt.Errorf("failed to start command: %v", err))
+		return "", fmt.Errorf("context: failed to start command: %w", err)
 	}
 
 	outputChan := make(chan string)
@@ -121,7 +121,7 @@ func (c *SSHClient) Execute(ctx context.Context, task agent.Task) (string, error
 				if err == io.EOF {
 					break
 				}
-				errorChan <- fmt.Errorf("context: %w", fmt.Errorf("read error: %v", err))
+				errorChan <- fmt.Errorf("context: read error: %w", err)
 				return
 			}
 		}
@@ -134,7 +134,12 @@ func (c *SSHClient) Execute(ctx context.Context, task agent.Task) (string, error
 
 		err = session.Wait()
 		if err != nil {
-			errorChan <- fmt.Errorf("context: %w", fmt.Errorf("command execution failed: %v", err))
+			stderrMsg := stderrBuf.String()
+			if stderrMsg != "" {
+				errorChan <- fmt.Errorf("context: command execution failed: %w (stderr: %s)", err, stderrMsg)
+			} else {
+				errorChan <- fmt.Errorf("context: command execution failed: %w", err)
+			}
 		}
 
 		outputChan <- outputBuf.String()

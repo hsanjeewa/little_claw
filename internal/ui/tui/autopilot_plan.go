@@ -3,12 +3,14 @@ package tui
 import (
 	"context"
 	"fmt"
+	"strings"
 	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/google/uuid"
 
 	"github.com/devops/agent/internal/domain/agent"
+	"github.com/devops/agent/internal/infrastructure/inventory"
 	"github.com/devops/agent/internal/infrastructure/llm"
 )
 
@@ -53,12 +55,13 @@ func (m AutopilotModel) GeneratePlan(goal string) tea.Cmd {
 	}
 }
 
-func (llmClient *LLMClient) GeneratePlanWithLLM(ctx context.Context, goal string) ([]llm.PlanStep, string, error) {
-	scope := llmClient.getScope()
-	capabilities := llmClient.getCapabilities()
+func (llmClient *LLMClient) GeneratePlanWithLLM(ctx context.Context, goal string, selectedHosts []inventory.TargetHost, watchtowerState WatchtowerStateSnapshot) ([]llm.PlanStep, string, error) {
+	scope := llmClient.getScope(selectedHosts)
+	capabilities := llmClient.getCapabilities(selectedHosts, watchtowerState)
 	constraints := llmClient.getConstraints()
+	watchtowerContext := llmClient.getWatchtowerContext(selectedHosts, watchtowerState)
 
-	plan, reasoning, err := llmClient.client.GeneratePlan(ctx, goal, scope, capabilities, constraints)
+	plan, reasoning, err := llmClient.client.GeneratePlan(ctx, goal, scope, capabilities, constraints, watchtowerContext)
 	if err != nil {
 		return nil, "", fmt.Errorf("LLM plan generation failed: %w", err)
 	}
@@ -66,16 +69,84 @@ func (llmClient *LLMClient) GeneratePlanWithLLM(ctx context.Context, goal string
 	return plan, reasoning, nil
 }
 
-func (llmClient *LLMClient) getScope() string {
-	return "Available hosts: localhost"
+func (llmClient *LLMClient) getScope(selectedHosts []inventory.TargetHost) string {
+	if len(selectedHosts) == 0 {
+		return "Available hosts: localhost"
+	}
+
+	var hosts []string
+	for _, host := range selectedHosts {
+		hosts = append(hosts, fmt.Sprintf("%s (%s:%d as %s)", host.Alias, host.IP, host.Port, host.User))
+	}
+	return "Selected hosts: " + strings.Join(hosts, ", ")
 }
 
-func (llmClient *LLMClient) getCapabilities() string {
-	return "Linux systems, SSH access, shell commands"
+func (llmClient *LLMClient) getWatchtowerContext(selectedHosts []inventory.TargetHost, state WatchtowerStateSnapshot) string {
+	if len(selectedHosts) == 0 || len(state.MemorySnapshots) == 0 {
+		return "No system state available"
+	}
+
+	var contextParts []string
+	for _, host := range selectedHosts {
+		hostContext := fmt.Sprintf("\nHost: %s", host.Alias)
+		
+		if memorySnapshots, ok := state.MemorySnapshots[host.Alias]; ok && len(memorySnapshots) > 0 {
+			latest := memorySnapshots[len(memorySnapshots)-1]
+			usedGB := float64(latest.UsedBytes) / (1024 * 1024 * 1024)
+			totalGB := float64(latest.TotalBytes) / (1024 * 1024 * 1024)
+			hostContext += fmt.Sprintf("\n  Memory: %.1f%% used (%.1fGB/%.1fGB)", 
+				latest.UsedPercent, usedGB, totalGB)
+		}
+		
+		if cpuSnapshots, ok := state.CPUSnapshots[host.Alias]; ok && len(cpuSnapshots) > 0 {
+			latest := cpuSnapshots[len(cpuSnapshots)-1]
+			hostContext += fmt.Sprintf("\n  CPU: %.1f%% used", latest.UsagePercent)
+		}
+		
+		if storageSnapshots, ok := state.StorageSnapshots[host.Alias]; ok && len(storageSnapshots) > 0 {
+			latest := storageSnapshots[len(storageSnapshots)-1]
+			usedGB := float64(latest.UsedBytes) / (1024 * 1024 * 1024)
+			totalGB := float64(latest.TotalBytes) / (1024 * 1024 * 1024)
+			hostContext += fmt.Sprintf("\n  Storage /: %.1f%% used (%.1fGB/%.1fGB)", 
+				latest.UsedPercent, usedGB, totalGB)
+		}
+		
+		if networkSnapshots, ok := state.NetworkSnapshots[host.Alias]; ok && len(networkSnapshots) > 0 {
+			latest := networkSnapshots[len(networkSnapshots)-1]
+			rxKbps := float64(latest.RxBytesPerSec) * 8 / 1024
+			txKbps := float64(latest.TxBytesPerSec) * 8 / 1024
+			hostContext += fmt.Sprintf("\n  Network RX: %.1fKB/s, TX: %.1fKB/s", 
+				rxKbps, txKbps)
+		}
+		
+		contextParts = append(contextParts, hostContext)
+	}
+	
+	return "Current system state:" + strings.Join(contextParts, "\n")
+}
+
+func (llmClient *LLMClient) getCapabilities(selectedHosts []inventory.TargetHost, watchtowerState WatchtowerStateSnapshot) string {
+	if len(selectedHosts) == 0 {
+		return "Linux systems, SSH access, shell commands"
+	}
+
+	var capabilities []string
+	capabilities = append(capabilities, "SSH access")
+	capabilities = append(capabilities, "Standard Linux shell commands")
+
+	for _, host := range selectedHosts {
+		if host.User != "root" {
+			capabilities = append(capabilities, "Sudo access for "+host.Alias)
+		} else {
+			capabilities = append(capabilities, "Root access for "+host.Alias)
+		}
+	}
+
+	return strings.Join(capabilities, ", ")
 }
 
 func (llmClient *LLMClient) getConstraints() string {
-	return "Operations must be safe, non-destructive, and approved by operator before execution"
+	return "Operations must be safe, non-destructive, and approved by operator before execution. Use read-only commands for diagnostics first. Document all mutative operations."
 }
 
 func (m AutopilotModel) handlePlanGeneration(goal string) tea.Cmd {
@@ -84,7 +155,7 @@ func (m AutopilotModel) handlePlanGeneration(goal string) tea.Cmd {
 		defer cancel()
 
 		if m.llmClient != nil {
-			plan, _, err := m.llmClient.GeneratePlanWithLLM(ctx, goal)
+			plan, _, err := m.llmClient.GeneratePlanWithLLM(ctx, goal, m.selectedHosts, m.watchtowerState)
 			if err != nil {
 				return PlanGeneratedMsg{
 					Error: fmt.Errorf("LLM request failed: %v", err),

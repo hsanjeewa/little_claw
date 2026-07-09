@@ -23,7 +23,7 @@ func TestLLMIntegration_RealLLM(t *testing.T) {
 
 	client := llm.NewLocalOpenAIClient(baseURL, apiKey, model)
 
-	plan, reasoning, err := client.GeneratePlan(testCtx(), "Check nginx status", "web-server", "Linux SSH access", "Safe read-only operations")
+	plan, reasoning, err := client.GeneratePlan(testCtx(), "Check nginx status", "web-server", "Linux SSH access", "Safe read-only operations", "No system state available")
 	if err != nil {
 		t.Fatalf("GeneratePlan failed: %v", err)
 	}
@@ -56,7 +56,7 @@ func TestLLMIntegration_InvalidAPIKey(t *testing.T) {
 
 	client := llm.NewLocalOpenAIClient(baseURL, "invalid-key", model)
 
-	_, _, err := client.GeneratePlan(testCtx(), "Check nginx status", "web-server", "Linux SSH access", "Safe read-only operations")
+	_, _, err := client.GeneratePlan(testCtx(), "Check nginx status", "web-server", "Linux SSH access", "Safe read-only operations", "No system state available")
 	if err == nil {
 		t.Fatal("Expected error with invalid API key, got nil")
 	}

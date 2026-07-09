@@ -9,8 +9,9 @@ func TestContextBuilder_AssemblesMessagesInQwenOrder(t *testing.T) {
 	scope := "web-prod-01, db-master"
 	capabilities := "Linux, SSH access"
 	constraints := "No downtime allowed"
+	watchtowerContext := "No system state available"
 
-	messages := BuildPlanContext(goal, scope, capabilities, constraints)
+	messages := BuildPlanContext(goal, scope, capabilities, constraints, watchtowerContext)
 
 	if len(messages) != 8 {
 		t.Fatalf("expected 8 messages, got %d", len(messages))
@@ -21,10 +22,10 @@ func TestContextBuilder_AssemblesMessagesInQwenOrder(t *testing.T) {
 		"Target Scope",
 		"Host Capability",
 		"Constraints",
+		"Watchtower",
 		"User Goal",
 		"SOUL.md",
 		"IDENTITY.md",
-		"Watchtower",
 	}
 
 	for i, expected := range expectedOrder {
@@ -36,7 +37,7 @@ func TestContextBuilder_AssemblesMessagesInQwenOrder(t *testing.T) {
 
 func TestContextBuilder_SchemaMessageIsFirst(t *testing.T) {
 	goal := "Check nginx"
-	messages := BuildPlanContext(goal, "web-01", "Linux", "none")
+	messages := BuildPlanContext(goal, "web-01", "Linux", "none", "No system state available")
 
 	if len(messages) == 0 {
 		t.Fatal("expected at least one message")
@@ -50,13 +51,13 @@ func TestContextBuilder_SchemaMessageIsFirst(t *testing.T) {
 
 func TestContextBuilder_UserGoalIsFifth(t *testing.T) {
 	goal := "Restart nginx on all webservers"
-	messages := BuildPlanContext(goal, "web-01,web-02", "Linux", "none")
+	messages := BuildPlanContext(goal, "web-01,web-02", "Linux", "none", "No system state available")
 
 	if len(messages) < 5 {
 		t.Fatalf("expected at least 5 messages, got %d", len(messages))
 	}
 
-	userGoalMessage := messages[4]
+	userGoalMessage := messages[5]
 	if !containsSubstring(userGoalMessage, goal) {
 		t.Fatalf("expected fifth message to contain goal, got: %s", userGoalMessage)
 	}

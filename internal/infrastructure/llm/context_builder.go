@@ -1,6 +1,6 @@
 package llm
 
-func BuildPlanContext(goal, scope, capabilities, constraints string) []string {
+func BuildPlanContext(goal, scope, capabilities, constraints, watchtowerContext string) []string {
 	schema := `You are a DevOps planner. Respond with a JSON object containing a "reasoning" field and a "steps" array.
 The response must be valid JSON. Every key and string value must be enclosed in double quotes.
 
@@ -29,16 +29,15 @@ Return ONLY valid JSON, no markdown, no extra text.`
 	userGoal := "User Goal: " + goal
 	soulContent := "SOUL.md content placeholder"
 	identityContent := "IDENTITY.md content placeholder"
-	watchtowerSummary := "Watchtower summary: No recent anomalies detected"
 
 	return []string{
 		schema,
 		targetScope,
 		hostCapabilities,
 		opsConstraints,
+		watchtowerContext,
 		userGoal,
 		soulContent,
 		identityContent,
-		watchtowerSummary,
 	}
 }

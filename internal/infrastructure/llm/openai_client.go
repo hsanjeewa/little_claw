@@ -66,8 +66,8 @@ Output:
 	return resp.Choices[0].Message.Content, nil
 }
 
-func (c *LocalOpenAIClient) GeneratePlan(ctx context.Context, goal string, scope string, capabilities string, constraints string) ([]PlanStep, string, error) {
-	messages := BuildPlanContext(goal, scope, capabilities, constraints)
+func (c *LocalOpenAIClient) GeneratePlan(ctx context.Context, goal string, scope string, capabilities string, constraints string, watchtowerContext string) ([]PlanStep, string, error) {
+	messages := BuildPlanContext(goal, scope, capabilities, constraints, watchtowerContext)
 
 	openaiMessages := make([]openai.ChatCompletionMessage, 0, len(messages)+2)
 	for _, msg := range messages {
@@ -159,8 +159,9 @@ func (c *LocalOpenAIClient) PlanTasks(ctx context.Context, goal string) ([]agent
 	scope := "web-prod-01, db-master, cache-01"
 	capabilities := "Linux, SSH access, sudo privileges"
 	constraints := "No downtime allowed, must notify before mutative operations"
+	watchtowerContext := "No system state available"
 
-	plan, _, err := c.GeneratePlan(ctx, goal, scope, capabilities, constraints)
+	plan, _, err := c.GeneratePlan(ctx, goal, scope, capabilities, constraints, watchtowerContext)
 	if err != nil {
 		return nil, err
 	}

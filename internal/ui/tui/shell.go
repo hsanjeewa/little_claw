@@ -440,11 +440,22 @@ func (s Shell) applyWatchtowerEscalation(payload WatchtowerEscalationPayload) (t
 	s.leaderMode = false
 	s.mode = payload.Target
 
+	watchtower, ok := s.watchtower.(WatchtowerModel)
+	watchtowerState := WatchtowerStateSnapshot{}
+	if ok {
+		watchtowerState = watchtower.ExportStateSnapshot()
+	}
+
+	selectedHosts := s.scope.Hosts
+	if len(selectedHosts) == 0 {
+		selectedHosts = s.inventory
+	}
+
 	switch payload.Target {
 	case ModeAutopilot:
 		autopilot, ok := s.autopilot.(AutopilotModel)
 		if ok {
-			s.autopilot = autopilot.ApplyWatchtowerEscalation(payload)
+			s.autopilot = autopilot.ApplyWatchtowerEscalation(payload, selectedHosts, watchtowerState)
 		}
 	case ModeCopilot:
 		copilot, ok := s.copilot.(CopilotModel)

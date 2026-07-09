@@ -11,7 +11,15 @@ import (
 	"github.com/charmbracelet/x/ansi"
 
 	"github.com/devops/agent/internal/domain/agent"
+	"github.com/devops/agent/internal/infrastructure/inventory"
 )
+
+type WatchtowerStateSnapshot struct {
+	MemorySnapshots map[string][]agent.MemorySnapshot
+	CPUSnapshots    map[string][]agent.CPUSnapshot
+	StorageSnapshots map[string][]agent.StorageSnapshot
+	NetworkSnapshots map[string][]agent.NetworkSnapshot
+}
 
 const (
 	autopilotPaneCommand int = iota
@@ -38,6 +46,8 @@ type AutopilotModel struct {
 	taskHostIP    string
 	taskHostUser  string
 	taskHostPort  int
+	selectedHosts []inventory.TargetHost
+	watchtowerState WatchtowerStateSnapshot
 }
 
 func NewAutopilotModel() AutopilotModel {
@@ -105,12 +115,24 @@ func (m AutopilotModel) WithTargetHost(alias, ip, user string, port int) Autopil
 	return m
 }
 
+func (m AutopilotModel) WithSelectedHosts(hosts []inventory.TargetHost) AutopilotModel {
+	m.selectedHosts = hosts
+	return m
+}
+
+func (m AutopilotModel) WithWatchtowerState(state WatchtowerStateSnapshot) AutopilotModel {
+	m.watchtowerState = state
+	return m
+}
+
 func (m AutopilotModel) Init() tea.Cmd {
 	return nil
 }
 
-func (m AutopilotModel) ApplyWatchtowerEscalation(payload WatchtowerEscalationPayload) AutopilotModel {
+func (m AutopilotModel) ApplyWatchtowerEscalation(payload WatchtowerEscalationPayload, selectedHosts []inventory.TargetHost, watchtowerState WatchtowerStateSnapshot) AutopilotModel {
 	m.handoff = &payload
+	m.selectedHosts = selectedHosts
+	m.watchtowerState = watchtowerState
 	return m
 }
 
